@@ -324,6 +324,30 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Ran full backend pytest suite: all 36 tests passed in 1.74s.
   - Re-verified frontend production build: `npm run build` completed in 595ms with 0 errors.
 
+### 2026-10-23: Phase 3 - TASK-304: Complete Frontend–Backend Authentication Integration
+- **Context & Objectives**:
+  - Connected the React frontend `AuthContext` to the backend profile endpoint `GET /api/v1/users/me`.
+  - Ensured that authoritative database roles are strictly populated from backend responses and never guessed or cached across invalid sessions.
+  - Enforced race-condition protection, clear 401/403 state eviction, and strict CORS configuration.
+- **Action**: AuthContext Race Condition & Stale State Defense
+  - Added `activeTokenRef` and `isMountedRef` in `frontend/src/context/AuthContext.tsx`.
+  - If a session terminates, changes, or unmounts while `/api/v1/users/me` is in-flight, the stale response is discarded.
+  - On HTTP 401 (unregistered/deactivated/expired token), `profile` and `role` are strictly set to `null`, preventing privilege retention.
+  - On HTTP 403 (deactivated/unapproved account), profile is cleared and an explicit error notice is set.
+- **Action**: Protected Route Guards Hardening
+  - Updated `frontend/src/components/auth/RequireAuth.tsx` to check `loading || (session && profileStatus === 'loading')`, preventing protected content flashing.
+  - On backend verification failure (`profileStatus === 'error'`), `RequireAuth` displays a clean failure screen with a sign-out button rather than rendering unauthorized children.
+  - Confirmed `frontend/src/components/auth/RequireRole.tsx` cleanly distinguishes unauthenticated users (redirects to `/login`), unresolved profile status (displays pending sync UI), and role mismatches (displays 403 Access Restricted).
+- **Action**: Backend CORS Hardening
+  - Added `CORS_ORIGINS` to `Settings` in `backend/app/core/config.py` defaulting to trusted local development origins (`http://localhost:5173`, `http://127.0.0.1:5173`, `http://localhost:3000`).
+  - Mounted `CORSMiddleware` in `backend/app/main.py` allowing only necessary HTTP methods and headers (`Authorization`, `Content-Type`, `Accept`).
+  - Added `CORS_ORIGINS` placeholder to `backend/.env.example`.
+- **Action**: Testing & Verification
+  - Added CORS preflight test cases to `backend/tests/test_users_me.py` verifying that trusted origins receive CORS headers and untrusted origins are denied.
+  - Ran backend pytest suite: all 38 tests passed in 2.06s.
+  - Ran frontend linter (`npm run lint` / oxlint): 0 errors across 18 files.
+  - Ran frontend production build (`npm run build`): passed in 649ms with 0 errors.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -344,11 +368,12 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `python -m venv .venv` | `d:\ANUP\Quizdesk` | 0 | Virtual environment created successfully in `.venv/`. |
 | `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
 | `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `36 passed in 1.74s` (all model, migration, auth, and profile tests passing). |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `38 passed in 2.06s` (all model, migration, auth, profile, and CORS tests passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm install @supabase/supabase-js` | `d:\ANUP\Quizdesk\frontend` | 0 | Added Supabase browser client with 0 vulnerabilities. |
-| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 595ms. |
+| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 18 files. |
+| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 649ms. |
 | `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity (head)`. |
 | `alembic -c backend/alembic.ini upgrade head --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for initial schema + integrity hardening. |
 | `alembic -c backend/alembic.ini downgrade 0002_integrity:0001_initial_schema --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0002. |
@@ -360,26 +385,26 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pyjwt==2.10.1`, `pytest`, `pytest-asyncio`, `httpx`.
 - Added frontend dependencies in [`frontend/package.json`](file:///d:/ANUP/Quizdesk/frontend/package.json):
   - Runtime: `@supabase/supabase-js`, `react`, `react-dom`, `react-router-dom`, `lucide-react`.
-  - Development: `tailwindcss`, `@tailwindcss/vite`, `vite`, `typescript`, `@types/react`, `@types/react-dom`.
+  - Development: `tailwindcss`, `@tailwindcss/vite`, `vite`, `typescript`, `@types/react`, `@types/react-dom`, `oxlint`.
 
 ---
 
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint)**:
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `36 passed in 1.74s`.
-- **Frontend Production Build Verification**:
-  - Executed: `npm run build` (`tsc -b && vite build`).
-  - Result: Successful compilation, 1996 modules transformed in 595ms.
+  - Results: `38 passed in 2.06s`.
+- **Frontend Linter & Production Build Verification**:
+  - Executed: `npm run lint` (oxlint): 0 errors.
+  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 1996 modules transformed in 649ms.
 
 ---
 
 ## 8. Known Issues, Risks & Unresolved Questions
 
 ### Known Risks & Modeling Trade-Offs:
-1. **Backend Role Resolution Available**: `GET /api/v1/users/me` is now live and fully tested. Frontend `useAuth` can fetch this profile upon session establishment to resolve the user's authoritative role.
+1. **Frontend–Backend Profile Resolution Complete**: `AuthContext` correctly syncs with `GET /api/v1/users/me`, safely handles 401/403 states, and rejects stale in-flight responses.
 2. **Offline Local Development**: When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are not provided in `frontend/.env.local`, the frontend loads gracefully without crashing, displaying configuration notices on protected pages.
 
 ### Unresolved Questions / Future Confirmations:
@@ -394,7 +419,7 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-401`: Backend question CSV parser & validator** (or frontend client hookup to `/api/v1/users/me` during Phase 3 completion)
+**Task**: **`TASK-401`: Backend question CSV parser & validator**
 - Build the question bank CSV parsing and validation service with line-specific diagnostic reports.
 
 

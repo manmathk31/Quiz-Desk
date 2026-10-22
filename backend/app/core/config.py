@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     # PostgreSQL Database URL (psycopg3 driver)
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/quizdesk"
 
+    # CORS Allowed Origins (Restricted list; no wildcard in production)
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ]
+
     # Supabase Auth & JWT Configuration
     SUPABASE_URL: Optional[str] = None
     SUPABASE_ANON_KEY: Optional[str] = None

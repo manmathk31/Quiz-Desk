@@ -383,3 +383,41 @@ async def test_health_check_endpoint_unaffected():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_cors_allowed_origin_preflight():
+    """Verify that trusted local frontend origin receives CORS permission headers."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.options(
+            "/api/v1/users/me",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization, content-type",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert "authorization" in response.headers.get("access-control-allow-headers", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_cors_unauthorized_origin_rejected():
+    """Verify that untrusted arbitrary origins do not receive CORS permission headers."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.options(
+            "/api/v1/users/me",
+            headers={
+                "Origin": "http://unauthorized-malicious-domain.com",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert "access-control-allow-origin" not in response.headers
+

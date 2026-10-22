@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useState,
   useCallback,
+  useRef,
   type PropsWithChildren,
 } from 'react'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
@@ -28,14 +29,19 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>('idle')
   const [profileError, setProfileError] = useState<string | null>(null)
 
+  // Track active token and mounted state to discard stale in-flight requests and prevent race conditions
+  const activeTokenRef = useRef<string | null>(null)
+  const isMountedRef = useRef<boolean>(true)
+
   /**
    * Resolve user profile and authoritative role from trusted backend API.
    * As specified in DEC-001, DEC-013, and DEC-015:
    * Roles are NEVER inferred from client-editable Supabase user metadata.
-   * If the backend profile endpoint is pending, role remains null (unknown).
+   * If the backend profile endpoint fails or is pending, role remains null (unknown).
    */
   const resolveBackendProfile = useCallback(
     async (accessToken: string) => {
+      activeTokenRef.current = accessToken
       setProfileStatus('loading')
       try {
         const response = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
@@ -46,6 +52,11 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
           },
         })
 
+        // Guard against race conditions: if user signed out or token changed while fetch was in-flight
+        if (!isMountedRef.current || activeTokenRef.current !== accessToken) {
+          return
+        }
+
         if (response.ok) {
           const data: UserProfile = await response.json()
           setProfile(data)
@@ -55,8 +66,24 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
           return
         }
 
+        // Token rejected, account deactivated, or unregistered user: strictly clear profile & role
+        if (response.status === 401) {
+          setProfile(null)
+          setRole(null)
+          setProfileStatus('error')
+          setProfileError('Session unauthorized or expired (HTTP 401). Please sign in again.')
+          return
+        }
+
+        if (response.status === 403) {
+          setProfile(null)
+          setRole(null)
+          setProfileStatus('error')
+          setProfileError('Access restricted: Account deactivated or unapproved (HTTP 403).')
+          return
+        }
+
         if (response.status === 404) {
-          // Backend profile endpoint has not been implemented yet
           setProfile(null)
           setRole(null)
           setProfileStatus('endpoint_unavailable')
@@ -66,12 +93,15 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
           return
         }
 
-        // Other HTTP error (e.g. 401 token rejected, 403 inactive account)
+        // Other HTTP error
         setProfile(null)
         setRole(null)
         setProfileStatus('error')
         setProfileError(`Backend authentication error: HTTP ${response.status}`)
       } catch {
+        if (!isMountedRef.current || activeTokenRef.current !== accessToken) {
+          return
+        }
         // Network or connection error (e.g. backend server offline)
         setProfile(null)
         setRole(null)
@@ -85,10 +115,10 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   )
 
   useEffect(() => {
-    let isMounted = true
+    isMountedRef.current = true
 
     if (!isSupabaseConfigured) {
-      if (isMounted) {
+      if (isMountedRef.current) {
         setLoading(false)
         setProfileStatus('idle')
       }
@@ -99,12 +129,17 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     supabase.auth
       .getSession()
       .then(async ({ data: { session: initialSession }, error }) => {
-        if (!isMounted) return
+        if (!isMountedRef.current) return
 
         if (error) {
           console.error('[Quizdesk Auth] Error fetching initial session:', error.message)
+          activeTokenRef.current = null
           setSession(null)
           setUser(null)
+          setProfile(null)
+          setRole(null)
+          setProfileStatus('idle')
+          setProfileError(null)
           setLoading(false)
           return
         }
@@ -115,18 +150,19 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         if (initialSession?.access_token) {
           await resolveBackendProfile(initialSession.access_token)
         } else {
+          activeTokenRef.current = null
           setProfile(null)
           setRole(null)
           setProfileStatus('idle')
           setProfileError(null)
         }
 
-        if (isMounted) {
+        if (isMountedRef.current) {
           setLoading(false)
         }
       })
       .catch((err) => {
-        if (isMounted) {
+        if (isMountedRef.current) {
           console.error('[Quizdesk Auth] Unexpected error initializing session:', err)
           setLoading(false)
         }
@@ -135,28 +171,41 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     // 2. Realtime auth state change subscription
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      if (!isMounted) return
+    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!isMountedRef.current) return
+
+      if (event === 'SIGNED_OUT' || !newSession) {
+        activeTokenRef.current = null
+        setSession(null)
+        setUser(null)
+        setProfile(null)
+        setRole(null)
+        setProfileStatus('idle')
+        setProfileError(null)
+        setLoading(false)
+        return
+      }
 
       setSession(newSession)
-      setUser(newSession?.user ?? null)
+      setUser(newSession.user ?? null)
 
-      if (newSession?.access_token) {
+      if (newSession.access_token) {
         await resolveBackendProfile(newSession.access_token)
       } else {
+        activeTokenRef.current = null
         setProfile(null)
         setRole(null)
         setProfileStatus('idle')
         setProfileError(null)
       }
 
-      if (isMounted) {
+      if (isMountedRef.current) {
         setLoading(false)
       }
     })
 
     return () => {
-      isMounted = false
+      isMountedRef.current = false
       subscription.unsubscribe()
     }
   }, [resolveBackendProfile])
@@ -174,6 +223,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   }, [])
 
   const signOut = useCallback(async () => {
+    activeTokenRef.current = null
     if (isSupabaseConfigured) {
       await supabase.auth.signOut()
     }
@@ -190,6 +240,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       await resolveBackendProfile(session.access_token)
     }
   }, [session, resolveBackendProfile])
+
 
   const value: AuthContextValue = {
     session,

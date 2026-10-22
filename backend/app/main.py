@@ -1,5 +1,6 @@
 """FastAPI Application Entrypoint for Quizdesk."""
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1 import api_v1_router
 
@@ -9,6 +10,16 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url=None,
 )
+
+# Enforce explicit, restricted CORS origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+)
+
 
 
 @app.get("/health", tags=["Health"])
