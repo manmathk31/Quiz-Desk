@@ -31,7 +31,7 @@ This document tracks all implementation tasks for **Quizdesk**. Each task is ass
 |---|---|---|---|---|
 | `TASK-101` | Git repository initialization & `.gitignore` creation | `Completed` | Phase 0 | - `git init` executed.<br>- Comprehensive `.gitignore` covering `.venv/`, `node_modules/`, `dist/`, `.env`, `*.pyc`, `__pycache__/`, coverage files.<br>- Initial commit with documentation files (verified commit `7bdaff5`). |
 | `TASK-102` | Python virtual environment & backend scaffolding | `Completed` | `TASK-101` | - Isolated `.venv` created.<br>- FastAPI, Pydantic, SQLAlchemy, Alembic pinned in `backend/requirements.txt`.<br>- Health check endpoint (`GET /health`) implemented and verified (1 passed in 0.71s). |
-| `TASK-103` | Frontend Vite + React + TypeScript scaffolding | `Not started` | `TASK-101` | - Vite React TS application initialized non-interactively in `./frontend`.<br>- Tailwind CSS configured with academic design token palette.<br>- React Router set up.<br>- Dev server starts and renders placeholder welcome view. |
+| `TASK-103` | Frontend Vite + React + TypeScript scaffolding | `Completed` | `TASK-101` | - Vite React TS application scaffolded in `./frontend`.<br>- Tailwind CSS v4, React Router, Lucide React configured.<br>- Academic portal design shell with responsive layout.<br>- Production build verified (`tsc -b && vite build` built in 727ms). |
 | `TASK-104` | Baseline test runners configuration | `Not started` | `TASK-102`, `TASK-103` | - `pytest` configured and passing on backend.<br>- `vitest` configured and passing on frontend. |
 
 ---
