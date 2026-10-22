@@ -1,0 +1,38 @@
+"""SQLAlchemy declarative models registry for Quizdesk."""
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.user import User, StudentProfile, UserRole
+from app.models.quiz import Quiz, QuizVersion, QuizStatus
+from app.models.question import Question, QuestionOption, QuestionType
+from app.models.roster import QuizAssignment
+from app.models.attempt import (
+    QuizAttempt,
+    AttemptAnswer,
+    AttemptTelemetryEvent,
+    AttemptStatus,
+    GradingStatus,
+)
+from app.models.audit import GradeAdjustment, AuditEvent, ImportJob
+
+__all__ = [
+    "Base",
+    "TimestampMixin",
+    "UUIDPrimaryKeyMixin",
+    "User",
+    "StudentProfile",
+    "UserRole",
+    "Quiz",
+    "QuizVersion",
+    "QuizStatus",
+    "Question",
+    "QuestionOption",
+    "QuestionType",
+    "QuizAssignment",
+    "QuizAttempt",
+    "AttemptAnswer",
+    "AttemptTelemetryEvent",
+    "AttemptStatus",
+    "GradingStatus",
+    "GradeAdjustment",
+    "AuditEvent",
+    "ImportJob",
+]

@@ -32,19 +32,19 @@ This document tracks all implementation tasks for **Quizdesk**. Each task is ass
 | `TASK-101` | Git repository initialization & `.gitignore` creation | `Completed` | Phase 0 | - `git init` executed.<br>- Comprehensive `.gitignore` covering `.venv/`, `node_modules/`, `dist/`, `.env`, `*.pyc`, `__pycache__/`, coverage files.<br>- Initial commit with documentation files (verified commit `7bdaff5`). |
 | `TASK-102` | Python virtual environment & backend scaffolding | `Completed` | `TASK-101` | - Isolated `.venv` created.<br>- FastAPI, Pydantic, SQLAlchemy, Alembic pinned in `backend/requirements.txt`.<br>- Health check endpoint (`GET /health`) implemented and verified (1 passed in 0.71s). |
 | `TASK-103` | Frontend Vite + React + TypeScript scaffolding | `Completed` | `TASK-101` | - Vite React TS application scaffolded in `./frontend`.<br>- Tailwind CSS v4, React Router, Lucide React configured.<br>- Academic portal design shell with responsive layout.<br>- Production build verified (`tsc -b && vite build` built in 727ms). |
-| `TASK-104` | Baseline test runners configuration | `Not started` | `TASK-102`, `TASK-103` | - `pytest` configured and passing on backend.<br>- `vitest` configured and passing on frontend. |
+| `TASK-104` | Database schema & migration foundation | `Completed` | `TASK-102` | - 13 SQLAlchemy 2.x domain models defined.<br>- Alembic configured with dynamic DATABASE_URL and %(here)s/alembic.<br>- Initial migration `0001_initial_schema` created and verified via pytest & offline SQL generation. |
 
 ---
 
 ## Phase 2: Database Schema & Migration Foundation
-**Goal**: Set up Supabase PostgreSQL connection, define relational data models with SQLAlchemy, and establish Alembic migrations.
+**Goal**: Establish code-first PostgreSQL schema with SQLAlchemy 2.x and version-controlled Alembic migrations.
 
 | Task ID | Task Title | Status | Dependencies | Acceptance Criteria |
 |---|---|---|---|---|
-| `TASK-201` | Alembic migration harness setup | `Not started` | `TASK-102` | - Alembic initialized with async database connection support.<br>- Migrations execute cleanly against local/staging PostgreSQL. |
-| `TASK-202` | Core user profile & role schema definition | `Not started` | `TASK-201` | - Tables for `users`, `roles` (`student`, `teacher`, `admin`), and academic profiles with `prn` uniqueness constraints.<br>- Migration generated and applied. |
-| `TASK-203` | Quiz, Question, and Option relational schema | `Not started` | `TASK-201` | - Tables for `quizzes`, `quiz_versions`, `questions`, `question_options`.<br>- Support for single MCQ, multi MCQ, and True/False.<br>- Versioning foreign keys and immutability flags. |
-| `TASK-204` | Roster assignment & attempt tracking schema | `Not started` | `TASK-202`, `TASK-203` | - Tables for `quiz_assignments`, `quiz_attempts`, `attempt_answers`, and `audit_logs`.<br>- Foreign keys, timestamps, and indexes on lookup columns. |
+| `TASK-201` | Alembic migration harness setup | `Completed` | `TASK-102` | - Alembic initialized in `backend/alembic/`.<br>- Dynamic settings-backed configuration and offline SQL generation verified. |
+| `TASK-202` | Core user profile & role schema definition | `Completed` | `TASK-201` | - Tables for `users`, `roles` (`student`, `teacher`, `admin`), and `student_profiles` with `prn` uniqueness constraints defined and tested. |
+| `TASK-203` | Quiz, Question, and Option relational schema | `Completed` | `TASK-201` | - Tables for `quizzes`, `quiz_versions`, `questions`, `question_options`.<br>- Support for single MCQ, multi MCQ, True/False, and immutable version constraints. |
+| `TASK-204` | Roster assignment & attempt tracking schema | `Completed` | `TASK-202`, `TASK-203` | - Tables for `quiz_assignments`, `quiz_attempts`, `attempt_answers`, `attempt_telemetry_events`, `grade_adjustments`, `audit_events`, `import_jobs`.<br>- Constraints and indexes verified in migration `0001_initial_schema`. |
 
 ---
 

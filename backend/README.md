@@ -38,3 +38,27 @@ uvicorn app.main:app --app-dir backend --reload --port 8000
 python -m pytest -c backend/pytest.ini backend/tests -v
 ```
 
+### 5. Database Migrations (Alembic)
+Ensure the root virtual environment is activated:
+
+- **Review Migration History**:
+  ```powershell
+  alembic -c backend/alembic.ini history
+  ```
+
+- **Generate Migration SQL (Offline Dry-Run)**:
+  ```powershell
+  alembic -c backend/alembic.ini upgrade head --sql
+  ```
+
+- **Apply Migrations to Target Database (Online)**:
+  ```powershell
+  alembic -c backend/alembic.ini upgrade head
+  ```
+
+- **Create a New Revision**:
+  ```powershell
+  alembic -c backend/alembic.ini revision -m "migration_description"
+  ```
+
+

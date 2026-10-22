@@ -78,7 +78,16 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt) | Pinned production and test dependencies for the Python backend. |
 | [`backend/pytest.ini`](file:///d:/ANUP/Quizdesk/backend/pytest.ini) | Pytest configuration file with asyncio and pythonpath settings. |
 | [`backend/tests/test_health.py`](file:///d:/ANUP/Quizdesk/backend/tests/test_health.py) | Automated health check endpoint verification test suite. |
-| [`backend/README.md`](file:///d:/ANUP/Quizdesk/backend/README.md) | Essential setup, execution, and testing commands for Windows PowerShell. |
+| [`backend/app/models/base.py`](file:///d:/ANUP/Quizdesk/backend/app/models/base.py) | Declarative Base and mixins (TimestampMixin, UUIDPrimaryKeyMixin). |
+| [`backend/app/models/user.py`](file:///d:/ANUP/Quizdesk/backend/app/models/user.py) | User, StudentProfile models, and UserRole enum. |
+| [`backend/app/models/quiz.py`](file:///d:/ANUP/Quizdesk/backend/app/models/quiz.py) | Quiz, QuizVersion models, and QuizStatus enum. |
+| [`backend/app/models/question.py`](file:///d:/ANUP/Quizdesk/backend/app/models/question.py) | Question, QuestionOption models, and QuestionType enum. |
+| [`backend/app/models/roster.py`](file:///d:/ANUP/Quizdesk/backend/app/models/roster.py) | QuizAssignment roster model with PRN and email uniqueness constraints. |
+| [`backend/app/models/attempt.py`](file:///d:/ANUP/Quizdesk/backend/app/models/attempt.py) | QuizAttempt, AttemptAnswer, and AttemptTelemetryEvent models. |
+| [`backend/app/models/audit.py`](file:///d:/ANUP/Quizdesk/backend/app/models/audit.py) | GradeAdjustment, AuditEvent, and ImportJob audit models. |
+| [`backend/alembic/versions/0001_initial_schema.py`](file:///d:/ANUP/Quizdesk/backend/alembic/versions/0001_initial_schema.py) | Initial schema DDL migration script. |
+| [`backend/.env.example`](file:///d:/ANUP/Quizdesk/backend/.env.example) | Safe environment variables template with placeholder credentials. |
+| [`backend/README.md`](file:///d:/ANUP/Quizdesk/backend/README.md) | Essential setup, execution, testing, and Alembic migration commands. |
 | [`frontend/src/App.tsx`](file:///d:/ANUP/Quizdesk/frontend/src/App.tsx) | Root application router and shell container. |
 | [`frontend/src/components/layout/Shell.tsx`](file:///d:/ANUP/Quizdesk/frontend/src/components/layout/Shell.tsx) | Institutional portal shell layout with responsive Header and Footer. |
 | [`frontend/src/pages/Home.tsx`](file:///d:/ANUP/Quizdesk/frontend/src/pages/Home.tsx) | Quizdesk landing view establishing DEC-004 academic visual design principles. |
@@ -164,6 +173,30 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Executed `npm run build` (`tsc -b && vite build`). Build succeeded: 1946 modules transformed, assets generated in `frontend/dist/` in 727ms.
   - Verified `frontend/node_modules/` and `frontend/dist/` are strictly ignored by Git.
 
+### 2026-10-23: Phase 2 - Task 104 / Tasks 201-204: Database Schema & Migration Foundation
+- **Action**: Created Code-First SQLAlchemy 2.x Declarative Domain Models
+  - Created `backend/app/models/base.py` (`Base`, `TimestampMixin`, `UUIDPrimaryKeyMixin`).
+  - Created `backend/app/models/user.py` (`User` linking to Supabase auth UUID, `StudentProfile` with unique `prn`, `UserRole` enum).
+  - Created `backend/app/models/quiz.py` (`Quiz`, immutable `QuizVersion` with schedule window, timer, attempt limits, navigation policy, and result release controls, `QuizStatus` enum).
+  - Created `backend/app/models/question.py` (`Question` supporting single MCQ, multi MCQ, True/False, positive/negative marks, `QuestionOption` with server-concealed `is_correct`, `QuestionType` enum).
+  - Created `backend/app/models/roster.py` (`QuizAssignment` enforcing per-quiz student CSV schema `prn,name,email,division`, unique PRN per quiz, indexed emails).
+  - Created `backend/app/models/attempt.py` (`QuizAttempt` with server-authoritative timestamps, `AttemptAnswer` storing selected option IDs, `AttemptTelemetryEvent` for tab-switch monitoring, `AttemptStatus` and `GradingStatus` enums).
+  - Created `backend/app/models/audit.py` (`GradeAdjustment` with mandatory justification reason, `AuditEvent` for platform actions, `ImportJob` for CSV import validation tracking).
+  - Created `backend/app/models/__init__.py` registry exporting all 13 models to `Base.metadata`.
+- **Action**: Configured Alembic Migration Environment
+  - Initialized Alembic harness in `backend/alembic/` and `backend/alembic.ini`.
+  - Configured `backend/alembic.ini` with `script_location = %(here)s/alembic`.
+  - Configured `backend/alembic/env.py` to dynamically load `DATABASE_URL` from Pydantic settings without exposing credentials.
+  - Created safe `backend/.env.example` with empty placeholders.
+  - Documented migration inspection, dry-run, and application commands in `backend/README.md`.
+- **Action**: Crafted Initial Schema Migration (`0001_initial_schema`)
+  - Created deterministic migration script `backend/alembic/versions/0001_initial_schema.py` creating all 13 tables, UUID primary keys, foreign key constraints, unique constraints, and indexes in `upgrade()`, and dropping in reverse order in `downgrade()`.
+  - Tested Alembic revision history: verified `<base> -> 0001_initial_schema (head)`.
+  - Executed offline SQL generation (`alembic upgrade head --sql`): verified generation of valid PostgreSQL DDL without connecting to a live database.
+- **Action**: Automated Test Verification
+  - Created `backend/tests/test_models.py` verifying model table registration, constraints (`uq_quiz_version_number`, `uq_quiz_assignment_prn`, `uq_attempt_number_per_student`), enums, and Alembic migration discovery.
+  - Ran pytest suite: 5 passed in 1.34s.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -183,10 +216,12 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `python --version` | `d:\ANUP\Quizdesk` | 0 | Python 3.13.5. |
 | `python -m venv .venv` | `d:\ANUP\Quizdesk` | 0 | Virtual environment created successfully in `.venv/`. |
 | `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `1 passed in 0.71s`. |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `5 passed in 1.34s`. |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 727ms. |
+| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `<base> -> 0001_initial_schema (head)`. |
+| `alembic -c backend/alembic.ini upgrade head --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for all 13 tables. |
 
 ---
 
@@ -202,36 +237,46 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Health Check Test**:
-  - `backend\tests\test_health.py::test_health_check_returns_ok PASSED [100%]` (1 passed in 0.71s).
+- **Backend Test Suite (Health & Models)**:
+  - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
+  - Results:
+    - `test_health_check_returns_ok PASSED [20%]`
+    - `test_sqlalchemy_metadata_table_registration PASSED [40%]`
+    - `test_unique_constraints_and_foreign_keys PASSED [60%]`
+    - `test_enum_specifications PASSED [80%]`
+    - `test_alembic_migration_chain PASSED [100%]`
+    - Summary: `5 passed in 1.34s`.
+- **Alembic Offline DDL Validation**:
+  - Verified DDL generation for all 13 tables without database connection.
 - **Frontend Production Build Verification**:
   - Executed: `npm run build` (`tsc -b && vite build`).
-  - Result: Successful compilation, 1946 modules transformed, output in `dist/index.html`, `dist/assets/index-*.css`, `dist/assets/index-*.js`.
+  - Result: Successful compilation, 1946 modules transformed in 727ms.
 
 ---
 
 ## 8. Known Issues, Risks & Unresolved Questions
 
-### Known Risks:
-1. **Synchronized Peak Concurrency**: In collegiate assessments, hundreds of students concurrently open questions and autosave answers at the exact same minute. Mitigated by DEC-001, DEC-002, and DEC-013 with planned load simulation (Locust/k6) and connection pooling.
-2. **Client Clock Drift / Manipulation**: Students attempting to manipulate local system time to gain exam minutes. Mitigated by DEC-008 and DEC-009 where server timestamps are strictly authoritative.
-3. **Tab-Switch Telemetry False Positives**: Browser window blur events can be triggered by system notifications or accidental trackpad gestures. Mitigated by DEC-009 specifying tab-switch events as telemetry context rather than automated immediate failure.
+### Known Risks & Modeling Trade-Offs:
+1. **Live PostgreSQL Execution Untested in this Step**: No local PostgreSQL service is installed and Supabase credentials are not yet supplied. Validated offline via Alembic `--sql` DDL generation and metadata unit tests. Live database execution will take place in Phase 3 when Supabase credentials are configured in `.env`.
+2. **Answer Selection Model Trade-off**: Stored in `attempt_answers.selected_option_ids` as a JSON array of UUIDs. This avoids schema changes between single-choice, multiple-choice, and true-false answers while maintaining foreign key integrity on questions.
+3. **Immutability Trade-off**: Editing a published quiz creates a new `QuizVersion` rather than mutating existing rows, preserving historical attempt validity.
 
 ### Unresolved Questions / Future Confirmations:
-- Exact Supabase project URL and keys to be configured via `.env` in Phase 2.
-- Institutional CSV schema variations (e.g., whether student names include middle names or prefixes; handled via robust string normalization).
+- Exact Supabase project URL and keys to be configured via `.env` in Phase 3.
 
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All actions strictly complied with Phase 1 boundary constraints and confirmed decisions.
+- **None**: All actions strictly complied with Phase 2 boundary constraints and confirmed decisions.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-104`: Baseline test runners configuration** (or proceed to **Phase 2: Database Schema & Migration Foundation**).
-- Configure Vitest baseline for frontend component testing or proceed directly to Supabase PostgreSQL schema and Alembic migrations.
+**Task**: **`TASK-301`: FastAPI JWT verification middleware & Supabase Auth integration**
+- Configure Supabase Auth client and FastAPI dependency for validating JWT signatures.
+- Implement `@require_role(["teacher", "student", "admin"])` security guards.
+
 
 
 

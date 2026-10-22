@@ -77,7 +77,9 @@ Rather than deploying distributed microservices, Quizdesk couples a modern Singl
 
 ### 2.3 Database & Auth (PostgreSQL via Supabase)
 - **PostgreSQL**: Relational storage enforcing foreign key constraints, unique indexing (e.g., student assignments), and transactional ACID guarantees during quiz submissions.
+- **Code-First Schema & Alembic**: 13 domain models managed via SQLAlchemy 2.x declarative Base (`users`, `student_profiles`, `quizzes`, `quiz_versions`, `questions`, `question_options`, `quiz_assignments`, `quiz_attempts`, `attempt_answers`, `attempt_telemetry_events`, `grade_adjustments`, `audit_events`, `import_jobs`). All DDL operations execute via version-controlled migrations (`backend/alembic/`), never manual dashboard edits.
 - **Supabase Auth**: Managed authentication handling institutional email/password sign-ins, JWT issuance, and secure credential handling.
+
 
 ---
 
