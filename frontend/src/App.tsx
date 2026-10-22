@@ -10,6 +10,7 @@ import { Unauthorized } from './pages/Unauthorized'
 import { RequireRole } from './components/auth/RequireRole'
 import { StudentPortalPlaceholder } from './pages/StudentPortalPlaceholder'
 import { TeacherPortalPlaceholder } from './pages/TeacherPortalPlaceholder'
+import { QuestionBank } from './pages/teacher/QuestionBank'
 
 export const App: React.FC = () => {
   return (
@@ -40,6 +41,15 @@ export const App: React.FC = () => {
                 </RequireRole>
               }
             />
+            <Route
+              path="/teacher/question-bank"
+              element={
+                <RequireRole allowedRoles={['teacher', 'admin']}>
+                  <QuestionBank />
+                </RequireRole>
+              }
+            />
+
 
             {/* Fallback 404 Route */}
             <Route path="*" element={<NotFound />} />

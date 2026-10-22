@@ -348,6 +348,52 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Ran frontend linter (`npm run lint` / oxlint): 0 errors across 18 files.
   - Ran frontend production build (`npm run build`): passed in 649ms with 0 errors.
 
+### 2026-10-23: Phase 4 - Milestone 4A: Teacher Question Bank & CSV Import Engine
+- **Context & Objectives**:
+  - Built the first teacher-facing assessment authoring module: personal reusable question bank, manual CRUD, CSV template download, dry-run CSV parsing & validation preview, and transactional all-or-nothing CSV import.
+  - Preserved the immutability of published quiz versions and student historical attempt answers.
+- **Action**: Data Model & Migration (DEC-006)
+  - Updated `backend/app/models/question.py`:
+    - Made `quiz_version_id` nullable (`Optional[UUID]`), allowing questions to reside in a teacher's reusable bank without requiring a quiz version.
+    - Added `created_by_id` (`UUID`, foreign key `users.id`, `ondelete='RESTRICT'`) and creator relationship.
+    - Added check constraint `ck_question_bank_or_version` enforcing `(quiz_version_id IS NOT NULL) OR (created_by_id IS NOT NULL)`.
+  - Generated migration `backend/alembic/versions/0003_teacher_question_bank.py` (`0003_question_bank`).
+  - Tested migration chain: verified `0003_question_bank -> 0002_integrity -> 0001_initial_schema`. Verified static SQL upgrade and downgrade.
+- **Action**: CSV Parsing & Validation Engine (DEC-006)
+  - Created `backend/app/services/csv_parser.py`:
+    - Safe UTF-8 decoding with automatic BOM stripping (`utf-8-sig`).
+    - Enforced 2MB file limit and 200 question row count limit.
+    - Header normalization and required headers check (`question_type`, `question_text`, `option_a`, `option_b`, `option_c`, `option_d`, `correct_answers`, `positive_marks`, `negative_marks`).
+    - Type-specific option validation: Single Choice (exactly 1 correct answer), Multi Choice (at least 1 correct answer), True/False (defaults to True/False, forbids options C/D, normalized answer key).
+    - Option deduplication check and empty option reference prevention.
+    - Numeric mark validation: positive marks > 0, negative penalty >= 0.
+- **Action**: Authenticated REST API (DEC-006, DEC-013)
+  - Pinned `python-multipart==0.0.20` in `backend/requirements.txt` for multipart file uploads.
+  - Created schemas in `backend/app/schemas/question.py` with custom Pydantic validators.
+  - Created endpoints in `backend/app/api/v1/endpoints/question_bank.py`:
+    - `GET /api/v1/question-bank`: Paginated question bank listing with search and type filters.
+    - `POST /api/v1/question-bank`: Manual question creation with options.
+    - `GET /api/v1/question-bank/{id}`: Single question details with options.
+    - `PUT /api/v1/question-bank/{id}`: Full question update and option replacement.
+    - `DELETE /api/v1/question-bank/{id}`: 204 No Content deletion from bank.
+    - `POST /api/v1/question-bank/csv/preview`: Dry-run validation preview returning parsed items and line-by-line errors without writing to DB.
+    - `POST /api/v1/question-bank/csv/import`: All-or-nothing transactional import (rejects with 422 if any error exists).
+    - `GET /api/v1/question-bank/csv/template`: Downloadable sample CSV template.
+  - Enforced `require_faculty` role guard (rejects students with 403 Forbidden) and cross-teacher tenant isolation (404 on foreign question access).
+- **Action**: Frontend Question Bank UI
+  - Created `frontend/src/types/question.ts` and `frontend/src/services/questionBankApi.ts`.
+  - Built `frontend/src/pages/teacher/QuestionBank.tsx`: Responsive table/cards, search, type pills, pagination, edit, and delete confirmation.
+  - Built `frontend/src/pages/teacher/QuestionModal.tsx`: Dynamic option builder, radio/checkbox answer toggles, and form validation.
+  - Built `frontend/src/pages/teacher/CsvImportModal.tsx`: Drag & drop upload, sample template downloader, live validation preview summary, row-level error table, and confirmation step.
+  - Mounted `/teacher/question-bank` route in `frontend/src/App.tsx` and linked from `Header.tsx` and `TeacherPortalPlaceholder.tsx`.
+- **Action**: Comprehensive Testing & Verification
+  - Created `backend/tests/test_csv_parser.py`: 11 unit tests covering BOM, missing headers, empty files, malformed rows, duplicate options, invalid types, mark checks, and limits.
+  - Created `backend/tests/test_question_bank_api.py`: 9 integration tests covering teacher CRUD, cross-teacher isolation, student role denial (403), template download, dry-run preview, and all-or-nothing rollback.
+  - Updated `backend/tests/test_models.py` migration chain test for `0003_question_bank`.
+  - Ran full backend pytest suite: all 58 tests passed in 2.13s.
+  - Ran frontend linter (`oxlint`): 0 errors across 23 files.
+  - Ran frontend production build (`npm run build`): passed in 660ms with 0 errors.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -368,21 +414,22 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `python -m venv .venv` | `d:\ANUP\Quizdesk` | 0 | Virtual environment created successfully in `.venv/`. |
 | `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
 | `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `38 passed in 2.06s` (all model, migration, auth, profile, and CORS tests passing). |
+| `.\.venv\Scripts\pip.exe install python-multipart==0.0.20` | `d:\ANUP\Quizdesk` | 0 | Installed python-multipart for file upload parsing. |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `58 passed in 2.13s` (all model, migration, auth, profile, CORS, CSV parser, and question bank tests passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm install @supabase/supabase-js` | `d:\ANUP\Quizdesk\frontend` | 0 | Added Supabase browser client with 0 vulnerabilities. |
-| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 18 files. |
-| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 649ms. |
-| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity (head)`. |
-| `alembic -c backend/alembic.ini upgrade head --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for initial schema + integrity hardening. |
-| `alembic -c backend/alembic.ini downgrade 0002_integrity:0001_initial_schema --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0002. |
+| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 23 files. |
+| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 660ms. |
+| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank (head)`. |
+| `alembic -c backend/alembic.ini upgrade 0002_integrity:0003_question_bank --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for teacher question bank schema. |
+| `alembic -c backend/alembic.ini downgrade 0003_question_bank:0002_integrity --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0003. |
 
 ---
 
 ## 6. Dependencies Added / Removed
 - Added backend dependencies pinned in [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt):
-  - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pyjwt==2.10.1`, `pytest`, `pytest-asyncio`, `httpx`.
+  - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pyjwt==2.10.1`, `python-multipart==0.0.20`, `pytest`, `pytest-asyncio`, `httpx`.
 - Added frontend dependencies in [`frontend/package.json`](file:///d:/ANUP/Quizdesk/frontend/package.json):
   - Runtime: `@supabase/supabase-js`, `react`, `react-dom`, `react-router-dom`, `lucide-react`.
   - Development: `tailwindcss`, `@tailwindcss/vite`, `vite`, `typescript`, `@types/react`, `@types/react-dom`, `oxlint`.
@@ -392,19 +439,21 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS)**:
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV Parser, Question Bank API)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `38 passed in 2.06s`.
+  - Results: `58 passed in 2.13s`.
 - **Frontend Linter & Production Build Verification**:
-  - Executed: `npm run lint` (oxlint): 0 errors.
-  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 1996 modules transformed in 649ms.
+  - Executed: `npm run lint` (oxlint): 0 errors across 23 files.
+  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2000 modules transformed in 660ms.
+- **Alembic Offline Migration Checks**:
+  - Verified `upgrade 0002_integrity:0003_question_bank --sql` and `downgrade 0003_question_bank:0002_integrity --sql`.
 
 ---
 
 ## 8. Known Issues, Risks & Unresolved Questions
 
 ### Known Risks & Modeling Trade-Offs:
-1. **Frontend–Backend Profile Resolution Complete**: `AuthContext` correctly syncs with `GET /api/v1/users/me`, safely handles 401/403 states, and rejects stale in-flight responses.
+1. **Reusable vs Versioned Question Partitioning**: Reusable questions have `quiz_version_id IS NULL` and `created_by_id = teacher.id`. When questions are incorporated into a published quiz version (Phase 4B), they are cloned into immutable version-attached questions (`quiz_version_id = version.id`), guaranteeing edits to the bank never alter published quizzes or past attempts.
 2. **Offline Local Development**: When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are not provided in `frontend/.env.local`, the frontend loads gracefully without crashing, displaying configuration notices on protected pages.
 
 ### Unresolved Questions / Future Confirmations:
@@ -413,14 +462,15 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All changes strictly adhere to DEC-001, DEC-013, and DEC-015.
+- **None**: All changes strictly adhere to DEC-001, DEC-006, DEC-013, and DEC-015.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-401`: Backend question CSV parser & validator**
-- Build the question bank CSV parsing and validation service with line-specific diagnostic reports.
+**Task**: **`TASK-402`: Quiz builder & manual question CRUD endpoints**
+- Implement quiz drafting, adding questions from the question bank into a quiz, setting question order and weights, and updating quiz scheduling windows.
+
 
 
 

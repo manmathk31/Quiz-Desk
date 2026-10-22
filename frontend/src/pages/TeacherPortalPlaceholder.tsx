@@ -28,13 +28,28 @@ export const TeacherPortalPlaceholder: React.FC = () => {
         </p>
       </div>
 
-      <p className="text-sm text-slate-600 leading-relaxed">
-        This is a placeholder demonstrating successful evaluation of the{' '}
-        <code className="text-xs bg-slate-100 px-1 py-0.5 rounded font-mono">
-          RequireRole(['teacher', 'admin'])
-        </code>{' '}
-        guard. Assessment authoring tools and roster CSV engines will be implemented in Phase 4.
-      </p>
+      <div className="mt-6 pt-6 border-t border-slate-200">
+        <h2 className="text-sm font-bold text-slate-900 mb-3">Available Authoring Modules</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <a
+            href="/teacher/question-bank"
+            className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-300 transition-colors block text-left group"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-blue-900 group-hover:text-blue-700">
+                Question Bank & CSV Import
+              </span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-200 text-blue-800">
+                Live
+              </span>
+            </div>
+            <p className="text-xs text-slate-600">
+              Create, edit, search, and bulk-import reusable questions from CSV files with line-by-line validation.
+            </p>
+          </a>
+        </div>
+      </div>
     </div>
   )
 }
+

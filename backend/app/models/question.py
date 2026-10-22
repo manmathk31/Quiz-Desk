@@ -20,6 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, utc_now
 
 if TYPE_CHECKING:
+    from app.models.user import User
     from app.models.quiz import QuizVersion
     from app.models.attempt import AttemptAnswer
 
@@ -33,18 +34,28 @@ class QuestionType(str, enum.Enum):
 
 class Question(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """
-    Assessment question belonging to an immutable QuizVersion.
+    Assessment question belonging to an immutable QuizVersion or a teacher's Question Bank.
     """
     __tablename__ = "questions"
     __table_args__ = (
         CheckConstraint("positive_marks > 0", name="ck_question_positive_marks"),
         CheckConstraint("negative_marks >= 0", name="ck_question_negative_marks"),
+        CheckConstraint(
+            "(quiz_version_id IS NOT NULL) OR (created_by_id IS NOT NULL)",
+            name="ck_question_bank_or_version",
+        ),
     )
 
-    quiz_version_id: Mapped[uuid.UUID] = mapped_column(
+    quiz_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("quiz_versions.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+        index=True,
+    )
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True,
     )
     question_type: Mapped[QuestionType] = mapped_column(
@@ -62,7 +73,12 @@ class Question(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     # Relationships
-    quiz_version: Mapped["QuizVersion"] = relationship("QuizVersion", back_populates="questions")
+    quiz_version: Mapped[Optional["QuizVersion"]] = relationship(
+        "QuizVersion", back_populates="questions"
+    )
+    creator: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[created_by_id]
+    )
     options: Mapped[List["QuestionOption"]] = relationship(
         "QuestionOption",
         back_populates="question",
@@ -76,6 +92,7 @@ class Question(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<Question id={self.id} type={self.question_type} marks={self.positive_marks}>"
+
 
 
 class QuestionOption(Base, UUIDPrimaryKeyMixin):

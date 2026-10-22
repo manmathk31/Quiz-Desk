@@ -17,6 +17,7 @@ psycopg[binary]==3.2.4
 
 # Authentication & Security
 pyjwt==2.10.1
+python-multipart==0.0.20
 
 # Testing & Client
 pytest==8.3.4

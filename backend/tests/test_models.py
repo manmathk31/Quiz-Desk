@@ -99,7 +99,11 @@ def test_alembic_migration_chain():
 
     heads = script.get_heads()
     assert len(heads) == 1
-    assert heads[0] == "0002_integrity"
+    assert heads[0] == "0003_question_bank"
+
+    rev3 = script.get_revision("0003_question_bank")
+    assert rev3 is not None
+    assert rev3.down_revision == "0002_integrity"
 
     rev2 = script.get_revision("0002_integrity")
     assert rev2 is not None
@@ -108,3 +112,4 @@ def test_alembic_migration_chain():
     rev1 = script.get_revision("0001_initial_schema")
     assert rev1 is not None
     assert rev1.down_revision is None
+

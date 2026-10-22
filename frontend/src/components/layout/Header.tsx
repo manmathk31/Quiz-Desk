@@ -15,9 +15,11 @@ export const Header: React.FC = () => {
       ? [
           { label: 'Student Portal', path: '/student/portal' },
           { label: 'Teacher Portal', path: '/teacher/portal' },
+          { label: 'Question Bank', path: '/teacher/question-bank' },
         ]
       : []),
   ]
+
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-50">
