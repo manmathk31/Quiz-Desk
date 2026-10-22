@@ -11,10 +11,14 @@ class Settings(BaseSettings):
     # PostgreSQL Database URL (psycopg3 driver)
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/quizdesk"
 
-    # Supabase Auth Configuration
+    # Supabase Auth & JWT Configuration
     SUPABASE_URL: Optional[str] = None
     SUPABASE_ANON_KEY: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    SUPABASE_JWT_SECRET: Optional[str] = None
+    SUPABASE_JWT_ALGORITHM: str = "HS256"
+    SUPABASE_JWT_AUDIENCE: Optional[str] = "authenticated"
+    SUPABASE_JWT_ISSUER: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

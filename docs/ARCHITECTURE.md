@@ -201,6 +201,11 @@ sequenceDiagram
 5. **Zero-Trust Network Operations**:
    - Passwords and service keys are never returned in API payloads or logged in debug output.
    - Database connection pools use encrypted TLS connections.
+6. **Authoritative Application Role Verification**:
+   - Authentication tokens issued by Supabase cryptographically verify identity (`sub` claim), but never grant application permissions directly.
+   - User roles (`student`, `teacher`, `admin`) are strictly resolved from the application database table (`users.role`).
+   - Role claims or user metadata embedded in the JWT payload or request body are completely untrusted and ignored for authorization.
+
 
 ---
 

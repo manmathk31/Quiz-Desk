@@ -54,9 +54,10 @@ This document tracks all implementation tasks for **Quizdesk**. Each task is ass
 
 | Task ID | Task Title | Status | Dependencies | Acceptance Criteria |
 |---|---|---|---|---|
-| `TASK-301` | FastAPI JWT verification middleware | `Not started` | `TASK-102`, `TASK-202` | - Middleware validates Supabase-issued JWTs.<br>- Extracts user claims and verifies role membership against the database.<br>- Rejects expired, altered, or unsigned tokens with 401. |
-| `TASK-302` | Role authorization dependencies (`RequireRole`) | `Not started` | `TASK-301` | - Dependency injections for `@require_role(["teacher"])` and `@require_role(["student"])`.<br>- Unauthorized access returns strict 403 Forbidden. |
-| `TASK-303` | Frontend authentication context & route guards | `Not started` | `TASK-103`, `TASK-301` | - Supabase client integration for student login using institutional email.<br>- Protected routes redirect unauthorized users to login.<br>- Session tokens stored securely and refreshed automatically. |
+| `TASK-301A` | FastAPI JWT authentication foundation & role guards | `Completed` | `TASK-102`, `TASK-202` | - PyJWT installed and configured for Supabase HS256 JWTs.<br>- `get_current_user` extracts Bearer token, cryptographically validates signature, expiration, audience, and subject.<br>- Rejects missing/malformed/expired/unregistered/inactive tokens with 401.<br>- Authoritative user roles resolved from database `User.role` (JWT claims role spoofing prevented).<br>- Reusable role guards (`require_student`, `require_teacher`, `require_admin`, `require_faculty`) return 403 on role mismatch.<br>- Verified with 18 comprehensive auth unit tests. |
+| `TASK-301B` | Live Supabase project credentials & user provisioning | `Not started` | `TASK-301A` | - Configure live Supabase URL, anon key, and JWT secret in `.env`.<br>- Implement user profile creation/sync hook when a Supabase user signs up. |
+| `TASK-303` | Frontend authentication context & route guards | `Not started` | `TASK-103`, `TASK-301A` | - Supabase client integration for student login using institutional email.<br>- Protected routes redirect unauthorized users to login.<br>- Session tokens stored securely and refreshed automatically. |
+
 
 ---
 

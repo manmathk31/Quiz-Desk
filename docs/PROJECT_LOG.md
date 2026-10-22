@@ -223,6 +223,37 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Verified Alembic forward offline SQL (`alembic upgrade head --sql`): 0 errors, generated valid PostgreSQL DDL.
   - Verified Alembic rollback offline SQL (`alembic downgrade 0002_integrity:0001_initial_schema --sql`): 0 errors, generated valid reversal DDL.
 
+### 2026-10-23: Phase 3 - TASK-301A: FastAPI Authentication Foundation & Role Guards
+- **Context & Objectives**:
+  - Implemented a secure, offline-testable authentication foundation for Supabase-issued Bearer JWTs without requiring live Supabase credentials.
+  - Resolved authenticated tokens directly to application database `User` records.
+  - Established authoritative role verification rejecting client-side claim spoofing.
+- **Action**: Dependencies & Settings
+  - Pinned `pyjwt==2.10.1` in `backend/requirements.txt` (native HMAC-SHA256, no external C bindings).
+  - Extended `Settings` in `backend/app/core/config.py`: added `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ALGORITHM` (default `HS256`), `SUPABASE_JWT_AUDIENCE` (default `authenticated`), and `SUPABASE_JWT_ISSUER`.
+  - Updated `backend/.env.example` with non-sensitive placeholder configuration variables.
+  - Updated `backend/README.md` with environment setup and testing instructions.
+- **Action**: Core Database & Auth Infrastructure
+  - Created `backend/app/core/database.py` defining transactional `get_db` session dependency.
+  - Created `backend/app/core/auth.py`:
+    - `decode_supabase_jwt`: Enforces HMAC-SHA256 signature verification with `SUPABASE_JWT_SECRET`, checks expiration, validates audience (`authenticated`), and requires subject claim (`sub`). Rejects malformed, tampered, or expired tokens with tailored RFC 6750 HTTP 401 exceptions.
+    - `get_current_user`: Extracts Bearer header, validates token, parses subject UUID, looks up `User` record in database, and rejects unregistered or inactive (`is_active=False`) users with HTTP 401.
+    - Authoritative database role resolution: User roles (`student`, `teacher`, `admin`) are strictly loaded from `users.role`. Roles present in JWT claims or request bodies are untrusted and ignored.
+    - Role guards: Implemented `require_roles(*allowed_roles)` factory and reusable dependencies `require_student`, `require_teacher`, `require_admin`, `require_faculty` returning HTTP 403 Forbidden on role mismatch.
+    - Exported all dependencies in `backend/app/core/__init__.py`.
+- **Action**: Comprehensive Unit Testing
+  - Created `backend/tests/test_auth.py` with 18 focused test cases using an in-memory SQLite fixture and controlled test signing material:
+    - Verifies health check remains unauthenticated and intact (HTTP 200).
+    - Verifies missing, invalid scheme, empty, and malformed tokens return HTTP 401.
+    - Verifies tampered signature, expired token, and invalid audience return HTTP 401.
+    - Verifies missing `sub` and malformed UUID `sub` return HTTP 401.
+    - Verifies unregistered users and deactivated users (`is_active=False`) return HTTP 401.
+    - Verifies student access succeeds on student endpoints and fails with HTTP 403 on teacher/admin endpoints.
+    - Verifies teacher and admin role permissions on faculty and role-specific endpoints.
+    - Verifies token role spoofing defense: tokens with injected `{"role": "admin"}` are denied access (HTTP 403) if the database role is `student`.
+    - Verifies missing `SUPABASE_JWT_SECRET` in settings returns HTTP 500.
+  - Executed pytest suite: all 23 tests passed in 2.10s.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -242,7 +273,8 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `python --version` | `d:\ANUP\Quizdesk` | 0 | Python 3.13.5. |
 | `python -m venv .venv` | `d:\ANUP\Quizdesk` | 0 | Virtual environment created successfully in `.venv/`. |
 | `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `5 passed in 1.46s` (all model & migration checks passing). |
+| `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `23 passed in 2.10s` (health, models, migrations, auth, and role guards). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 727ms. |
@@ -254,7 +286,7 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 
 ## 6. Dependencies Added / Removed
 - Added backend dependencies pinned in [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt):
-  - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pytest`, `pytest-asyncio`, `httpx`.
+  - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pyjwt==2.10.1`, `pytest`, `pytest-asyncio`, `httpx`.
 - Added frontend dependencies in [`frontend/package.json`](file:///d:/ANUP/Quizdesk/frontend/package.json):
   - Runtime: `react`, `react-dom`, `react-router-dom`, `lucide-react`.
   - Development: `tailwindcss`, `@tailwindcss/vite`, `vite`, `typescript`, `@types/react`, `@types/react-dom`.
@@ -264,47 +296,59 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health & Models)**:
+- **Backend Test Suite (Health, Models, Auth & Roles)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
   - Results:
-    - `test_health_check_returns_ok PASSED [20%]`
-    - `test_sqlalchemy_metadata_table_registration PASSED [40%]`
-    - `test_unique_constraints_and_foreign_keys PASSED [60%]`
-    - `test_enum_specifications PASSED [80%]`
-    - `test_alembic_migration_chain PASSED [100%]`
-    - Summary: `5 passed in 1.46s`.
+    - `test_health_check_returns_ok PASSED`
+    - `test_sqlalchemy_metadata_table_registration PASSED`
+    - `test_unique_constraints_and_foreign_keys PASSED`
+    - `test_enum_specifications PASSED`
+    - `test_alembic_migration_chain PASSED`
+    - `test_missing_authorization_header PASSED`
+    - `test_invalid_authorization_scheme PASSED`
+    - `test_empty_bearer_token PASSED`
+    - `test_malformed_token PASSED`
+    - `test_invalid_token_signature PASSED`
+    - `test_expired_token PASSED`
+    - `test_invalid_audience PASSED`
+    - `test_token_missing_sub_claim PASSED`
+    - `test_token_invalid_uuid_sub PASSED`
+    - `test_unregistered_user PASSED`
+    - `test_deactivated_user PASSED`
+    - `test_valid_student_access PASSED`
+    - `test_role_denial_for_student PASSED`
+    - `test_teacher_role_permissions PASSED`
+    - `test_admin_role_permissions PASSED`
+    - `test_token_role_spoofing_defense PASSED`
+    - `test_missing_jwt_secret_misconfiguration PASSED`
+    - Summary: `23 passed in 2.10s`.
 - **Alembic Offline DDL Validation**:
   - Verified forward upgrade DDL generation for `0001_initial_schema` and `0002_integrity`.
   - Verified rollback downgrade DDL generation from `0002_integrity` to `0001_initial_schema`.
-- **Frontend Production Build Verification**:
-  - Executed: `npm run build` (`tsc -b && vite build`).
-  - Result: Successful compilation, 1946 modules transformed in 727ms.
 
 ---
 
 ## 8. Known Issues, Risks & Unresolved Questions
 
 ### Known Risks & Modeling Trade-Offs:
-1. **Offline Verification vs. Live PostgreSQL**: Alembic `--sql` confirms DDL syntax and SQLAlchemy metadata mappings match. However, offline validation cannot test live PostgreSQL constraint triggers or transaction rollbacks until Supabase credentials are configured in Phase 3.
-2. **Application-Level Validation Invariants**:
-   - Question authoring rules (minimum 2 options, at least 1 correct option, single correct option for single-choice) cannot be modeled as purely static DB constraints without circular triggers, and must be strictly enforced in the service/Pydantic validation layer before publication.
-   - Attempt deadline calculation $\min(\text{started\_at} + \text{duration}, \text{closes\_at})$ is server-authoritative and must be computed by the backend submission engine.
+1. **Live Supabase Credentials Pending**: Verification is executed offline using controlled HMAC-SHA256 test signing keys and in-memory database sessions. Live integration will validate against Supabase's actual issued tokens once real credentials are provided in `.env`.
+2. **User Record Provisioning Dependency**: When an authenticated user signs in for the first time via Supabase Auth, a corresponding row in the application `users` table must be provisioned (e.g., via a post-signup hook or idempotent sign-in registration endpoint) before protected API endpoints allow access.
 
 ### Unresolved Questions / Future Confirmations:
-- Exact Supabase project URL and anon/service-role keys to be configured via `.env` in Phase 3.
+- Live Supabase project URL and JWT secret to be configured in `.env` before live deployment.
 
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All changes strictly respect confirmed decisions and the immutable migration history rule.
+- **None**: Token verification strictly respects DEC-001, DEC-011, and DEC-013.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-301`: FastAPI JWT verification middleware & Supabase Auth integration**
-- Configure Supabase Auth client and FastAPI dependency for validating JWT signatures.
-- Implement `@require_role(["teacher", "student", "admin"])` security guards.
+**Task**: **`TASK-303`: Frontend authentication context & route guards**
+- Integrate Supabase JS client into React frontend.
+- Implement student login shell, JWT session persistence, and role-protected route guards.
 
 
 

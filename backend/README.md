@@ -25,7 +25,14 @@ All commands should be executed from the repository root:
 pip install -r backend/requirements.txt
 ```
 
-### 3. Run Development Server
+### 3. Environment Configuration
+Copy `.env.example` to `backend/.env` and supply your environment variables:
+- `DATABASE_URL`: PostgreSQL connection URI.
+- `SUPABASE_JWT_SECRET`: The JWT Secret from your Supabase Project Settings -> API.
+- `SUPABASE_JWT_ALGORITHM`: Default is `HS256`.
+- `SUPABASE_JWT_AUDIENCE`: Default is `authenticated`.
+
+### 4. Run Development Server
 ```powershell
 uvicorn app.main:app --app-dir backend --reload --port 8000
 ```
@@ -33,12 +40,12 @@ uvicorn app.main:app --app-dir backend --reload --port 8000
 - Interactive OpenAPI Docs: `http://localhost:8000/docs`
 - Health Endpoint: `http://localhost:8000/health`
 
-### 4. Run Test Suite
+### 5. Run Test Suite
 ```powershell
 python -m pytest -c backend/pytest.ini backend/tests -v
 ```
 
-### 5. Database Migrations (Alembic)
+### 6. Database Migrations (Alembic)
 Ensure the root virtual environment is activated:
 
 - **Review Migration History**:
