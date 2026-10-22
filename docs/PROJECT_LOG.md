@@ -197,6 +197,32 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Created `backend/tests/test_models.py` verifying model table registration, constraints (`uq_quiz_version_number`, `uq_quiz_assignment_prn`, `uq_attempt_number_per_student`), enums, and Alembic migration discovery.
   - Ran pytest suite: 5 passed in 1.34s.
 
+### 2026-10-23: Phase 2 - TASK-104 Database Integrity Review & Hardening
+- **Context & Objectives**:
+  - Performed a focused database integrity review of `TASK-104` addressing 4 specific risk vectors prior to Phase 3 authentication integration:
+    1. *Student assignment identity*: Preventing duplicate roster entries or assignment hijacking.
+    2. *Published-version integrity*: Ensuring hard deletes on parent quizzes cannot wipe published versions or historical attempts.
+    3. *Scoring and result-release consistency*: Disentangling student score visibility (`QuizVersion.is_results_released`) from internal attempt grading lifecycle (`QuizAttempt.grading_status`).
+    4. *Scoring and configuration constraints*: Enforcing positive/non-negative marks, durations, scheduling windows, and multi-answer scoring policies at the database level.
+- **Action**: Model Adjustments & Invariants
+  - Added `uq_quiz_assignment_email` (`UniqueConstraint("quiz_id", "student_email")`) to `QuizAssignment` in `backend/app/models/roster.py`.
+  - Added `is_published: Mapped[bool]` and `MultiAnswerPolicy` enum (`all_or_nothing`, `partial_with_penalty`, `partial_no_penalty`) to `QuizVersion` in `backend/app/models/quiz.py`.
+  - Changed `quiz_versions.quiz_id` foreign key from `ON DELETE CASCADE` to `ON DELETE RESTRICT`, ensuring parent quizzes with versions must be archived rather than deleted.
+  - Refactored `GradingStatus` enum to `pending`, `auto_graded`, `manually_adjusted` in `backend/app/models/attempt.py`, cleanly separating scoring calculation state from the student-visible release gate (`QuizVersion.is_results_released`).
+  - Added check constraints:
+    - Questions: `ck_question_positive_marks` (`positive_marks > 0`), `ck_question_negative_marks` (`negative_marks >= 0`).
+    - Quiz Versions: `ck_quiz_version_duration` (`duration_minutes > 0`), `ck_quiz_version_max_attempts` (`max_attempts > 0`), `ck_quiz_version_time_window` (`closes_at > opens_at`), `ck_quiz_version_tab_limit` (`tab_switch_limit >= 0`), `ck_quiz_version_tab_penalty` (`tab_switch_penalty_marks >= 0`).
+    - Quiz Attempts: `ck_quiz_attempt_number` (`attempt_number >= 1`), `ck_quiz_attempt_deadline` (`deadline_at >= started_at`), `ck_quiz_attempt_tab_count` (`tab_switch_count >= 0`).
+- **Action**: Created Migration `0002_integrity`
+  - Created `backend/alembic/versions/0002_strengthen_integrity_constraints.py` (down_revision = `'0001_initial_schema'`).
+  - Kept migration `0001_initial_schema.py` strictly untouched.
+  - Fully implemented both `upgrade()` and symmetrical `downgrade()`.
+- **Action**: Verification & Test Suite Hardening
+  - Updated `backend/tests/test_models.py` to assert new check constraints, foreign key `RESTRICT` rules, enums (`MultiAnswerPolicy`, `GradingStatus`), and the 2-step migration chain.
+  - Verified pytest suite: 5 passed in 1.46s.
+  - Verified Alembic forward offline SQL (`alembic upgrade head --sql`): 0 errors, generated valid PostgreSQL DDL.
+  - Verified Alembic rollback offline SQL (`alembic downgrade 0002_integrity:0001_initial_schema --sql`): 0 errors, generated valid reversal DDL.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -216,12 +242,13 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `python --version` | `d:\ANUP\Quizdesk` | 0 | Python 3.13.5. |
 | `python -m venv .venv` | `d:\ANUP\Quizdesk` | 0 | Virtual environment created successfully in `.venv/`. |
 | `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `5 passed in 1.34s`. |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `5 passed in 1.46s` (all model & migration checks passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 727ms. |
-| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `<base> -> 0001_initial_schema (head)`. |
-| `alembic -c backend/alembic.ini upgrade head --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for all 13 tables. |
+| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity (head)`. |
+| `alembic -c backend/alembic.ini upgrade head --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for initial schema + integrity hardening. |
+| `alembic -c backend/alembic.ini downgrade 0002_integrity:0001_initial_schema --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0002. |
 
 ---
 
@@ -245,9 +272,10 @@ All items listed below represent **Confirmed** requirements and decisions agreed
     - `test_unique_constraints_and_foreign_keys PASSED [60%]`
     - `test_enum_specifications PASSED [80%]`
     - `test_alembic_migration_chain PASSED [100%]`
-    - Summary: `5 passed in 1.34s`.
+    - Summary: `5 passed in 1.46s`.
 - **Alembic Offline DDL Validation**:
-  - Verified DDL generation for all 13 tables without database connection.
+  - Verified forward upgrade DDL generation for `0001_initial_schema` and `0002_integrity`.
+  - Verified rollback downgrade DDL generation from `0002_integrity` to `0001_initial_schema`.
 - **Frontend Production Build Verification**:
   - Executed: `npm run build` (`tsc -b && vite build`).
   - Result: Successful compilation, 1946 modules transformed in 727ms.
@@ -257,17 +285,18 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 8. Known Issues, Risks & Unresolved Questions
 
 ### Known Risks & Modeling Trade-Offs:
-1. **Live PostgreSQL Execution Untested in this Step**: No local PostgreSQL service is installed and Supabase credentials are not yet supplied. Validated offline via Alembic `--sql` DDL generation and metadata unit tests. Live database execution will take place in Phase 3 when Supabase credentials are configured in `.env`.
-2. **Answer Selection Model Trade-off**: Stored in `attempt_answers.selected_option_ids` as a JSON array of UUIDs. This avoids schema changes between single-choice, multiple-choice, and true-false answers while maintaining foreign key integrity on questions.
-3. **Immutability Trade-off**: Editing a published quiz creates a new `QuizVersion` rather than mutating existing rows, preserving historical attempt validity.
+1. **Offline Verification vs. Live PostgreSQL**: Alembic `--sql` confirms DDL syntax and SQLAlchemy metadata mappings match. However, offline validation cannot test live PostgreSQL constraint triggers or transaction rollbacks until Supabase credentials are configured in Phase 3.
+2. **Application-Level Validation Invariants**:
+   - Question authoring rules (minimum 2 options, at least 1 correct option, single correct option for single-choice) cannot be modeled as purely static DB constraints without circular triggers, and must be strictly enforced in the service/Pydantic validation layer before publication.
+   - Attempt deadline calculation $\min(\text{started\_at} + \text{duration}, \text{closes\_at})$ is server-authoritative and must be computed by the backend submission engine.
 
 ### Unresolved Questions / Future Confirmations:
-- Exact Supabase project URL and keys to be configured via `.env` in Phase 3.
+- Exact Supabase project URL and anon/service-role keys to be configured via `.env` in Phase 3.
 
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All actions strictly complied with Phase 2 boundary constraints and confirmed decisions.
+- **None**: All changes strictly respect confirmed decisions and the immutable migration history rule.
 
 ---
 
@@ -276,6 +305,7 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 **Task**: **`TASK-301`: FastAPI JWT verification middleware & Supabase Auth integration**
 - Configure Supabase Auth client and FastAPI dependency for validating JWT signatures.
 - Implement `@require_role(["teacher", "student", "admin"])` security guards.
+
 
 
 

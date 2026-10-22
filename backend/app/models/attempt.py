@@ -12,6 +12,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     UniqueConstraint,
+    CheckConstraint,
     JSON,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -34,9 +35,12 @@ class AttemptStatus(str, enum.Enum):
 
 
 class GradingStatus(str, enum.Enum):
-    """Status of attempt evaluation visibility (DEC-010)."""
-    WITHHELD = "withheld"
-    RELEASED = "released"
+    """
+    Status of attempt score calculation and audit history (DEC-010).
+    Student score visibility is strictly gated by QuizVersion.is_results_released.
+    """
+    PENDING = "pending"
+    AUTO_GRADED = "auto_graded"
     MANUALLY_ADJUSTED = "manually_adjusted"
 
 
@@ -48,6 +52,9 @@ class QuizAttempt(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "quiz_attempts"
     __table_args__ = (
         UniqueConstraint("quiz_version_id", "student_id", "attempt_number", name="uq_attempt_number_per_student"),
+        CheckConstraint("attempt_number >= 1", name="ck_quiz_attempt_number"),
+        CheckConstraint("deadline_at >= started_at", name="ck_quiz_attempt_deadline"),
+        CheckConstraint("tab_switch_count >= 0", name="ck_quiz_attempt_tab_count"),
     )
 
     quiz_version_id: Mapped[uuid.UUID] = mapped_column(
@@ -80,7 +87,7 @@ class QuizAttempt(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     grading_status: Mapped[GradingStatus] = mapped_column(
         Enum(GradingStatus, name="grading_status_enum", native_enum=False),
         nullable=False,
-        default=GradingStatus.WITHHELD,
+        default=GradingStatus.PENDING,
     )
     is_finalized: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 

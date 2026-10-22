@@ -28,6 +28,7 @@ class QuizAssignment(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "quiz_assignments"
     __table_args__ = (
         UniqueConstraint("quiz_id", "student_prn", name="uq_quiz_assignment_prn"),
+        UniqueConstraint("quiz_id", "student_email", name="uq_quiz_assignment_email"),
         Index("ix_quiz_assignments_lookup", "quiz_id", "student_email"),
     )
 

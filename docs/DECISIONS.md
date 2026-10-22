@@ -206,3 +206,22 @@ This document tracks all formal architectural and product decisions for **Quizde
   - Realistic concurrent-load testing simulating peak synchronized exam starts and autosave bursts must be executed and verified before the platform is deployed for high-stakes examinations.
 - **Rationale**: College exams experience severe synchronization spikes (e.g., hundreds of students starting and submitting at the exact same minute). Security and concurrency resilience must be proven empirically rather than assumed.
 - **Implications**: Automated load-testing scripts (e.g., Locust or k6) will be specified in the testing roadmap, and backend endpoints will be benchmarked under simulated multi-user load.
+
+---
+
+### DEC-014: Database Integrity Constraints, Immutability, and Result Release Architecture
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Student Assignment Identity**: `QuizAssignment` enforces unique constraints on both `(quiz_id, student_prn)` and `(quiz_id, student_email)` to prevent duplicate roster rows and email collision. When mapping an authenticated user (`users.id`) to a quiz assignment, both verified email and PRN must match. Any mismatch requires administrative/teacher review and must never grant unauthorized attempt access.
+  - **Published Version Immutability**: `quiz_versions.quiz_id` foreign key enforces `ON DELETE RESTRICT` rather than cascading deletes. Quizzes with published versions or historical attempts cannot be hard deleted; they must be archived (`is_archived = true`). An explicit `is_published` boolean distinguishes draft versions from immutable published snapshots.
+  - **Scoring & Result-Release Consistency**: `QuizVersion.is_results_released` (along with `results_released_at` and `results_released_by_id`) serves as the sole authoritative visibility gate for student score and answer inspection. `QuizAttempt.grading_status` is an internal scoring lifecycle/audit status with values `pending`, `auto_graded`, and `manually_adjusted`. No student-facing API endpoint may present individual or overall scores as released when the parent `QuizVersion.is_results_released` is false.
+  - **Scoring & Configuration Constraints**: Database `CheckConstraint`s enforce:
+    - Questions: `positive_marks > 0` and `negative_marks >= 0`.
+    - Quiz Versions: `duration_minutes > 0`, `max_attempts > 0`, `closes_at > opens_at`, `tab_switch_limit >= 0`, `tab_switch_penalty_marks >= 0`.
+    - Quiz Attempts: `attempt_number >= 1`, `deadline_at >= started_at`, `tab_switch_count >= 0`.
+    - Multi-Answer Policy: `QuizVersion.multi_answer_policy` configuration explicitly records the scoring policy: `all_or_nothing`, `partial_with_penalty`, or `partial_no_penalty`.
+  - **Application-Level Validation Rules**: Database constraints are complemented by strict application-level validation: verifying at least 2 options per question, at least 1 correct option before publishing, exactly 1 correct option for single-choice questions, and enforcing attempt deadlines as $\min(\text{started\_at} + \text{duration}, \text{closes\_at})$.
+- **Rationale**: Guarantees relational defense-in-depth against accidental data deletion, prevents assignment hijacking, and eliminates semantic ambiguity between internal grading lifecycle and student result visibility.
+- **Implications**: Schema changes are captured in Alembic migration `0002_integrity` and validated via automated metadata tests and offline SQL generation.
+

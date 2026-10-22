@@ -13,6 +13,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     UniqueConstraint,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -31,6 +32,13 @@ class QuizStatus(str, enum.Enum):
     PUBLISHED = "published"
     CLOSED = "closed"
     ARCHIVED = "archived"
+
+
+class MultiAnswerPolicy(str, enum.Enum):
+    """Scoring policies for questions with multiple correct options (DEC-006, DEC-008)."""
+    ALL_OR_NOTHING = "all_or_nothing"
+    PARTIAL_WITH_PENALTY = "partial_with_penalty"
+    PARTIAL_NO_PENALTY = "partial_no_penalty"
 
 
 class Quiz(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -66,7 +74,6 @@ class Quiz(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     versions: Mapped[List["QuizVersion"]] = relationship(
         "QuizVersion",
         back_populates="quiz",
-        cascade="all, delete-orphan",
         order_by="QuizVersion.version_number",
         foreign_keys="QuizVersion.quiz_id",
     )
@@ -82,23 +89,32 @@ class Quiz(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class QuizVersion(Base, UUIDPrimaryKeyMixin):
     """
-    Immutable version snapshot of a published assessment (DEC-006, DEC-008).
-    Once published, attempts link directly to this immutable version snapshot.
+    Immutable version snapshot of an assessment (DEC-006, DEC-008).
+    Once published (is_published=True), attempts link directly to this immutable version snapshot.
+    Protected with ON DELETE RESTRICT from the parent quiz to prevent accidental history erasure.
     """
     __tablename__ = "quiz_versions"
     __table_args__ = (
         UniqueConstraint("quiz_id", "version_number", name="uq_quiz_version_number"),
+        CheckConstraint("duration_minutes > 0", name="ck_quiz_version_duration"),
+        CheckConstraint("max_attempts > 0", name="ck_quiz_version_max_attempts"),
+        CheckConstraint("closes_at > opens_at", name="ck_quiz_version_time_window"),
+        CheckConstraint("tab_switch_limit >= 0", name="ck_quiz_version_tab_limit"),
+        CheckConstraint("tab_switch_penalty_marks >= 0", name="ck_quiz_version_tab_penalty"),
     )
 
     quiz_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("quizzes.id", ondelete="CASCADE"),
+        ForeignKey("quizzes.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Immutability & Lifecycle Status
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
 
     # Timings & Duration (DEC-008)
     opens_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -110,6 +126,11 @@ class QuizVersion(Base, UUIDPrimaryKeyMixin):
     allow_backtracking: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     shuffle_questions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     shuffle_options: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    multi_answer_policy: Mapped[MultiAnswerPolicy] = mapped_column(
+        Enum(MultiAnswerPolicy, name="multi_answer_policy_enum", native_enum=False),
+        nullable=False,
+        default=MultiAnswerPolicy.ALL_OR_NOTHING,
+    )
 
     # Telemetry Configuration (DEC-009)
     tab_switch_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
@@ -146,4 +167,4 @@ class QuizVersion(Base, UUIDPrimaryKeyMixin):
     )
 
     def __repr__(self) -> str:
-        return f"<QuizVersion id={self.id} quiz_id={self.quiz_id} v={self.version_number}>"
+        return f"<QuizVersion id={self.id} quiz_id={self.quiz_id} v={self.version_number} published={self.is_published}>"

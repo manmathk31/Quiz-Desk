@@ -1,7 +1,7 @@
 """SQLAlchemy declarative models registry for Quizdesk."""
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.user import User, StudentProfile, UserRole
-from app.models.quiz import Quiz, QuizVersion, QuizStatus
+from app.models.quiz import Quiz, QuizVersion, QuizStatus, MultiAnswerPolicy
 from app.models.question import Question, QuestionOption, QuestionType
 from app.models.roster import QuizAssignment
 from app.models.attempt import (
@@ -23,6 +23,7 @@ __all__ = [
     "Quiz",
     "QuizVersion",
     "QuizStatus",
+    "MultiAnswerPolicy",
     "Question",
     "QuestionOption",
     "QuestionType",

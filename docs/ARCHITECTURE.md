@@ -76,8 +76,10 @@ Rather than deploying distributed microservices, Quizdesk couples a modern Singl
 - **Alembic**: Incremental, version-controlled database migrations preventing drift across environments.
 
 ### 2.3 Database & Auth (PostgreSQL via Supabase)
-- **PostgreSQL**: Relational storage enforcing foreign key constraints, unique indexing (e.g., student assignments), and transactional ACID guarantees during quiz submissions.
+- **PostgreSQL**: Relational storage enforcing foreign key constraints, unique indexing (e.g., student PRN and student email per quiz), database check constraints on marks and schedules, and transactional ACID guarantees during quiz submissions.
 - **Code-First Schema & Alembic**: 13 domain models managed via SQLAlchemy 2.x declarative Base (`users`, `student_profiles`, `quizzes`, `quiz_versions`, `questions`, `question_options`, `quiz_assignments`, `quiz_attempts`, `attempt_answers`, `attempt_telemetry_events`, `grade_adjustments`, `audit_events`, `import_jobs`). All DDL operations execute via version-controlled migrations (`backend/alembic/`), never manual dashboard edits.
+  - *Immutability Protection*: `QuizVersion` enforces `ON DELETE RESTRICT` from `quizzes`, preventing accidental deletion of version snapshots and completed attempts. Assessments must be archived, not hard-deleted.
+  - *Result Visibility Gate*: `QuizVersion.is_results_released` is the sole authoritative gate controlling student visibility into scores and answer keys. `QuizAttempt.grading_status` (`pending`, `auto_graded`, `manually_adjusted`) manages the internal scoring lifecycle and audit trail.
 - **Supabase Auth**: Managed authentication handling institutional email/password sign-ins, JWT issuance, and secure credential handling.
 
 

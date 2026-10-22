@@ -13,6 +13,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     UniqueConstraint,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -35,6 +36,10 @@ class Question(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     Assessment question belonging to an immutable QuizVersion.
     """
     __tablename__ = "questions"
+    __table_args__ = (
+        CheckConstraint("positive_marks > 0", name="ck_question_positive_marks"),
+        CheckConstraint("negative_marks >= 0", name="ck_question_negative_marks"),
+    )
 
     quiz_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
