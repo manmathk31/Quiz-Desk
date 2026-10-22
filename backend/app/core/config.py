@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_JWT_SECRET: Optional[str] = None
+    SUPABASE_JWT_PUBLIC_KEY: Optional[str] = None
     SUPABASE_JWT_ALGORITHM: str = "HS256"
     SUPABASE_JWT_AUDIENCE: Optional[str] = "authenticated"
     SUPABASE_JWT_ISSUER: Optional[str] = None

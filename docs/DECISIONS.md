@@ -225,3 +225,24 @@ This document tracks all formal architectural and product decisions for **Quizde
 - **Rationale**: Guarantees relational defense-in-depth against accidental data deletion, prevents assignment hijacking, and eliminates semantic ambiguity between internal grading lifecycle and student result visibility.
 - **Implications**: Schema changes are captured in Alembic migration `0002_integrity` and validated via automated metadata tests and offline SQL generation.
 
+---
+
+### DEC-015: Authentication Integration Readiness & Non-Self-Promoting User Provisioning
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Explicit Algorithm Enforcement**: Token verification explicitly verifies the configured algorithm (`settings.SUPABASE_JWT_ALGORITHM`, default `HS256`). For symmetric projects, `SUPABASE_JWT_SECRET` is used; for asymmetric projects (`RS256`, `ES256`), `SUPABASE_JWT_PUBLIC_KEY` is supported. Under no circumstances will the system accept `none` or arbitrary client-asserted algorithms.
+  - **User Provisioning & Role Safety**:
+    - Self-registration via the public Supabase Auth flow is restricted to `UserRole.STUDENT`. The client cannot specify, request, or manipulate their role.
+    - `teacher` and `admin` roles can never be self-selected. They must be provisioned through out-of-band administrative action (e.g., initial seed scripts, institutional directory sync, or admin portal provisioning).
+    - Authorization checks always query the application database `users.role`. JWT claims (e.g. `role`, `user_metadata`, `app_metadata`) and request body roles are strictly untrusted for authorization.
+  - **Secret Separation**:
+    - Frontend public config: `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+    - Backend-only private secrets: `DATABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`. Service role keys and JWT secrets must never be exposed to the browser or client bundle.
+  - **Prerequisites for Live Integration**:
+    - Required: `DATABASE_URL` (backend), `SUPABASE_JWT_SECRET` (backend), `VITE_SUPABASE_URL` (frontend), `VITE_SUPABASE_ANON_KEY` (frontend).
+    - Optional: `SUPABASE_SERVICE_ROLE_KEY` (for administrative user management), `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`.
+- **Rationale**: Prevents privilege escalation and credential leakage while establishing a clear, auditable boundary between Supabase identity and Quizdesk authorization.
+- **Implications**: Frontend client and backend services adhere strictly to separate environment files (`frontend/.env.local` vs. `backend/.env`).
+
+

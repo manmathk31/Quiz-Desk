@@ -30,8 +30,8 @@ def decode_supabase_jwt(
 
     Rejects arbitrary algorithms and unauthorized or malformed tokens.
     """
-    signing_secret = secret or settings.SUPABASE_JWT_SECRET
-    if not signing_secret:
+    signing_key = secret or settings.SUPABASE_JWT_PUBLIC_KEY or settings.SUPABASE_JWT_SECRET
+    if not signing_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authentication service misconfigured: SUPABASE_JWT_SECRET is missing",
@@ -62,7 +62,7 @@ def decode_supabase_jwt(
     try:
         payload = jwt.decode(
             token,
-            key=signing_secret,
+            key=signing_key,
             **kwargs,
         )
         return payload

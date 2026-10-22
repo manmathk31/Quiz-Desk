@@ -254,6 +254,23 @@ All items listed below represent **Confirmed** requirements and decisions agreed
     - Verifies missing `SUPABASE_JWT_SECRET` in settings returns HTTP 500.
   - Executed pytest suite: all 23 tests passed in 2.10s.
 
+### 2026-10-23: Phase 3 - TASK-301B: Authentication Integration Readiness Review
+- **Context & Objectives**:
+  - Conducted a comprehensive audit of authentication integration readiness prior to connecting frontend clients or live Supabase infrastructure.
+  - Verified explicit JWT signing configuration, safe non-self-promoting user provisioning, secret separation, and live integration prerequisites.
+- **Action**: Configuration Audit & Refinement
+  - Added `SUPABASE_JWT_PUBLIC_KEY` to `backend/app/core/config.py` and `backend/app/core/auth.py` to support asymmetric algorithms (`RS256`, `ES256`) alongside symmetric HMAC-SHA256 (`HS256`).
+  - Enforced strict single-algorithm validation: `algorithms=[settings.SUPABASE_JWT_ALGORITHM]` with no silent fallback to weaker or arbitrary algorithms.
+  - Created `frontend/.env.example` explicitly defining public browser configuration (`VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) and warning against secret inclusion.
+  - Re-verified server-only private secrets in `backend/.env.example` (`DATABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`).
+- **Action**: User Provisioning Design Finalization (DEC-015)
+  - Established that self-registration via Supabase Auth is strictly locked to `role = student`.
+  - Established that `teacher` and `admin` roles can only be provisioned by authorized administrators or initial institutional seeding.
+  - Verified that application role checks always query `users.role` from the database, preventing token claim spoofing.
+- **Action**: Verification & Regression Testing
+  - Ran pytest suite: all 23 tests passed in 2.08s.
+  - Built frontend production bundle: 0 errors in 692ms.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
