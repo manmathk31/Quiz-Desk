@@ -271,6 +271,31 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Ran pytest suite: all 23 tests passed in 2.08s.
   - Built frontend production bundle: 0 errors in 692ms.
 
+### 2026-10-23: Phase 3 - TASK-303: Frontend Authentication Context & Route Guards
+- **Context & Objectives**:
+  - Built the React frontend authentication foundation using Supabase Auth without requiring live credentials or implementing full application dashboard screens.
+  - Provided graceful fallback for unconfigured development environments.
+  - Bound application role resolution strictly to backend confirmation, never client-side metadata.
+- **Action**: Installed Supabase Client & Graceful Initialization
+  - Installed `@supabase/supabase-js` (`^2.118.0`) in `frontend/package.json`.
+  - Created `frontend/src/lib/supabase.ts` checking `isSupabaseConfigured` against placeholder values. Initialized fallback client to avoid runtime crashes during local development without credentials.
+  - Created `frontend/src/types/auth.ts` defining `UserRole`, `UserProfile`, `ProfileStatus`, and `AuthContextValue`.
+- **Action**: Implemented AuthProvider & useAuth Hook
+  - Created `frontend/src/context/AuthContext.tsx`:
+    - Manages `session`, `user`, `profile`, `role`, `loading`, and `profileStatus`.
+    - Handles initial session hydration (`supabase.auth.getSession()`) and realtime state changes (`supabase.auth.onAuthStateChange`).
+    - Ensures proper subscription cleanup on component unmount to prevent memory leaks and race conditions.
+    - Role Resolution Design: Attempts `GET ${VITE_API_BASE_URL}/api/v1/users/me` with Bearer token. When endpoint is pending (HTTP 404) or server is offline, cleanly marks `profileStatus = 'endpoint_unavailable'` and leaves `role = null` rather than guessing or reading client-editable metadata.
+- **Action**: Created Route Guards & Placeholder Views
+  - Created `frontend/src/components/auth/RequireAuth.tsx`: Prevents protected content flashing with a dedicated loading state; redirects unauthenticated visitors to `/login`.
+  - Created `frontend/src/components/auth/RequireRole.tsx`: Enforces role boundaries; provides clean pending status when backend role endpoint is unavailable, and HTTP 403 Forbidden notice on role mismatch.
+  - Created minimal placeholder routes: `frontend/src/pages/Login.tsx`, `frontend/src/pages/Unauthorized.tsx`, `frontend/src/pages/StudentPortalPlaceholder.tsx`, and `frontend/src/pages/TeacherPortalPlaceholder.tsx`.
+  - Integrated into `frontend/src/App.tsx` wrapped in `<AuthProvider>`.
+  - Updated `frontend/src/components/layout/Header.tsx` to reflect active session state and login/logout actions.
+- **Action**: Verification
+  - Executed `npm run build` (`tsc -b && vite build`): built in 746ms with 0 errors.
+  - Executed backend pytest suite: 23 passed in 2.34s.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -291,10 +316,11 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `python -m venv .venv` | `d:\ANUP\Quizdesk` | 0 | Virtual environment created successfully in `.venv/`. |
 | `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
 | `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `23 passed in 2.10s` (health, models, migrations, auth, and role guards). |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `23 passed in 2.34s` (all model, migration, and auth tests passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
-| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 727ms. |
+| `npm install @supabase/supabase-js` | `d:\ANUP\Quizdesk\frontend` | 0 | Added Supabase browser client with 0 vulnerabilities. |
+| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 746ms. |
 | `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity (head)`. |
 | `alembic -c backend/alembic.ini upgrade head --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for initial schema + integrity hardening. |
 | `alembic -c backend/alembic.ini downgrade 0002_integrity:0001_initial_schema --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0002. |
@@ -305,7 +331,7 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 - Added backend dependencies pinned in [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt):
   - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pyjwt==2.10.1`, `pytest`, `pytest-asyncio`, `httpx`.
 - Added frontend dependencies in [`frontend/package.json`](file:///d:/ANUP/Quizdesk/frontend/package.json):
-  - Runtime: `react`, `react-dom`, `react-router-dom`, `lucide-react`.
+  - Runtime: `@supabase/supabase-js`, `react`, `react-dom`, `react-router-dom`, `lucide-react`.
   - Development: `tailwindcss`, `@tailwindcss/vite`, `vite`, `typescript`, `@types/react`, `@types/react-dom`.
 
 ---
@@ -315,57 +341,34 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
 - **Backend Test Suite (Health, Models, Auth & Roles)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results:
-    - `test_health_check_returns_ok PASSED`
-    - `test_sqlalchemy_metadata_table_registration PASSED`
-    - `test_unique_constraints_and_foreign_keys PASSED`
-    - `test_enum_specifications PASSED`
-    - `test_alembic_migration_chain PASSED`
-    - `test_missing_authorization_header PASSED`
-    - `test_invalid_authorization_scheme PASSED`
-    - `test_empty_bearer_token PASSED`
-    - `test_malformed_token PASSED`
-    - `test_invalid_token_signature PASSED`
-    - `test_expired_token PASSED`
-    - `test_invalid_audience PASSED`
-    - `test_token_missing_sub_claim PASSED`
-    - `test_token_invalid_uuid_sub PASSED`
-    - `test_unregistered_user PASSED`
-    - `test_deactivated_user PASSED`
-    - `test_valid_student_access PASSED`
-    - `test_role_denial_for_student PASSED`
-    - `test_teacher_role_permissions PASSED`
-    - `test_admin_role_permissions PASSED`
-    - `test_token_role_spoofing_defense PASSED`
-    - `test_missing_jwt_secret_misconfiguration PASSED`
-    - Summary: `23 passed in 2.10s`.
-- **Alembic Offline DDL Validation**:
-  - Verified forward upgrade DDL generation for `0001_initial_schema` and `0002_integrity`.
-  - Verified rollback downgrade DDL generation from `0002_integrity` to `0001_initial_schema`.
+  - Results: `23 passed in 2.34s`.
+- **Frontend Production Build Verification**:
+  - Executed: `npm run build` (`tsc -b && vite build`).
+  - Result: Successful compilation, 1996 modules transformed in 746ms.
 
 ---
 
 ## 8. Known Issues, Risks & Unresolved Questions
 
 ### Known Risks & Modeling Trade-Offs:
-1. **Live Supabase Credentials Pending**: Verification is executed offline using controlled HMAC-SHA256 test signing keys and in-memory database sessions. Live integration will validate against Supabase's actual issued tokens once real credentials are provided in `.env`.
-2. **User Record Provisioning Dependency**: When an authenticated user signs in for the first time via Supabase Auth, a corresponding row in the application `users` table must be provisioned (e.g., via a post-signup hook or idempotent sign-in registration endpoint) before protected API endpoints allow access.
+1. **Backend Role Resolution Dependency**: Frontend authentication resolves authoritative role permissions via `GET /api/v1/users/me`. Until this backend endpoint is implemented, `RequireRole` displays an informative pending status without granting unauthorized privileges.
+2. **Offline Local Development**: When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are not provided in `frontend/.env.local`, the frontend loads gracefully without crashing, displaying configuration notices on protected pages.
 
 ### Unresolved Questions / Future Confirmations:
-- Live Supabase project URL and JWT secret to be configured in `.env` before live deployment.
+- Live Supabase project URL and anon/service keys to be provided in `.env.local` and `.env` prior to live staging.
 
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: Token verification strictly respects DEC-001, DEC-011, and DEC-013.
+- **None**: All changes strictly adhere to DEC-001, DEC-013, and DEC-015.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-303`: Frontend authentication context & route guards**
-- Integrate Supabase JS client into React frontend.
-- Implement student login shell, JWT session persistence, and role-protected route guards.
+**Task**: **`TASK-302`: Backend `GET /api/v1/users/me` profile endpoint & user provisioning helper**
+- Implement the current-user profile endpoint in FastAPI returning `{ id, email, name, role, is_active }`.
+- Connect the frontend role resolution flow so `useAuth().role` resolves directly from verified database records.
 
 
 
