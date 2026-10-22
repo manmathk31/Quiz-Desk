@@ -296,6 +296,34 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Executed `npm run build` (`tsc -b && vite build`): built in 746ms with 0 errors.
   - Executed backend pytest suite: 23 passed in 2.34s.
 
+### 2026-10-23: Phase 3 - TASK-302: Backend Profile Endpoint & API Router
+- **Context & Objectives**:
+  - Implemented the authenticated profile endpoint `GET /api/v1/users/me` allowing frontend clients to retrieve the authoritative identity and role of the logged-in user.
+  - Established a versioned API router structure under `backend/app/api/v1/` mounted at `/api/v1` in `backend/app/main.py`.
+  - Preserved the existing `GET /health` endpoint unchanged at the root level.
+- **Action**: Versioned Router & Endpoint Implementation
+  - Created `backend/app/api/__init__.py`.
+  - Created `backend/app/api/v1/__init__.py` aggregating API v1 routers into `api_v1_router`.
+  - Created `backend/app/api/v1/endpoints/users.py` with `@router.get("/me", response_model=UserResponse)`.
+  - Mounted `api_v1_router` on `app` with `prefix=settings.API_V1_PREFIX` (`/api/v1`) in `backend/app/main.py`.
+- **Action**: Strict Response Serialization (DEC-001, DEC-013)
+  - Created `backend/app/schemas/user.py` defining `UserResponse` with exact allowlist fields: `id`, `email`, `name`, `role`, `is_active`.
+  - Utilized `ConfigDict(from_attributes=True)` for seamless SQLAlchemy ORM mapping.
+  - Verified no passwords, tokens, internal timestamps, or ORM attributes (`_sa_instance_state`) leak in responses.
+- **Action**: Reused Authentication Dependency & Role Authority
+  - Reused `get_current_active_user` from `app.core.auth`; avoided duplicating JWT decoding or claim checks.
+  - Rejection of client role tampering: endpoint takes no request body or query parameter role overrides; role is resolved exclusively from the database.
+- **Action**: Comprehensive Testing & Verification
+  - Created `backend/tests/test_users_me.py` containing 13 focused test cases:
+    - 200 OK profile response for student, teacher, and admin with matching database roles.
+    - Strict allowlist verification: response keys match `{"id", "email", "name", "role", "is_active"}` and exclude forbidden attributes.
+    - 401 Unauthorized for missing token, invalid scheme, empty token, malformed token, invalid signature, and expired token.
+    - 401 Unauthorized for unregistered subjects and deactivated accounts.
+    - Verification that query parameter role tampering (`?role=admin`) is ignored and database role is maintained.
+    - Preservation of root `GET /health` functionality (HTTP 200 `{"status": "ok"}`).
+  - Ran full backend pytest suite: all 36 tests passed in 1.74s.
+  - Re-verified frontend production build: `npm run build` completed in 595ms with 0 errors.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -316,11 +344,11 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `python -m venv .venv` | `d:\ANUP\Quizdesk` | 0 | Virtual environment created successfully in `.venv/`. |
 | `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
 | `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `23 passed in 2.34s` (all model, migration, and auth tests passing). |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `36 passed in 1.74s` (all model, migration, auth, and profile tests passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm install @supabase/supabase-js` | `d:\ANUP\Quizdesk\frontend` | 0 | Added Supabase browser client with 0 vulnerabilities. |
-| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 746ms. |
+| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 595ms. |
 | `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity (head)`. |
 | `alembic -c backend/alembic.ini upgrade head --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for initial schema + integrity hardening. |
 | `alembic -c backend/alembic.ini downgrade 0002_integrity:0001_initial_schema --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0002. |
@@ -339,19 +367,19 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles)**:
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `23 passed in 2.34s`.
+  - Results: `36 passed in 1.74s`.
 - **Frontend Production Build Verification**:
   - Executed: `npm run build` (`tsc -b && vite build`).
-  - Result: Successful compilation, 1996 modules transformed in 746ms.
+  - Result: Successful compilation, 1996 modules transformed in 595ms.
 
 ---
 
 ## 8. Known Issues, Risks & Unresolved Questions
 
 ### Known Risks & Modeling Trade-Offs:
-1. **Backend Role Resolution Dependency**: Frontend authentication resolves authoritative role permissions via `GET /api/v1/users/me`. Until this backend endpoint is implemented, `RequireRole` displays an informative pending status without granting unauthorized privileges.
+1. **Backend Role Resolution Available**: `GET /api/v1/users/me` is now live and fully tested. Frontend `useAuth` can fetch this profile upon session establishment to resolve the user's authoritative role.
 2. **Offline Local Development**: When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are not provided in `frontend/.env.local`, the frontend loads gracefully without crashing, displaying configuration notices on protected pages.
 
 ### Unresolved Questions / Future Confirmations:
@@ -366,9 +394,9 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-302`: Backend `GET /api/v1/users/me` profile endpoint & user provisioning helper**
-- Implement the current-user profile endpoint in FastAPI returning `{ id, email, name, role, is_active }`.
-- Connect the frontend role resolution flow so `useAuth().role` resolves directly from verified database records.
+**Task**: **`TASK-401`: Backend question CSV parser & validator** (or frontend client hookup to `/api/v1/users/me` during Phase 3 completion)
+- Build the question bank CSV parsing and validation service with line-specific diagnostic reports.
+
 
 
 
