@@ -73,10 +73,17 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 |---|---|
 | [`.gitignore`](file:///d:/ANUP/Quizdesk/.gitignore) | Comprehensive ignore rules for Python, Node, Vite, secrets, and IDE artifacts, preserving `.env.example`. |
 | [`AGENTS.md`](file:///d:/ANUP/Quizdesk/AGENTS.md) | Authoritative operating rules and constraints for all AI coding assistants (including Rule 13: Git workflow). |
+| [`backend/app/main.py`](file:///d:/ANUP/Quizdesk/backend/app/main.py) | FastAPI application entrypoint, route mounts, and baseline `/health` endpoint. |
+| [`backend/app/core/config.py`](file:///d:/ANUP/Quizdesk/backend/app/core/config.py) | Centralized application settings with Pydantic BaseSettings. |
+| [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt) | Pinned production and test dependencies for the Python backend. |
+| [`backend/pytest.ini`](file:///d:/ANUP/Quizdesk/backend/pytest.ini) | Pytest configuration file with asyncio and pythonpath settings. |
+| [`backend/tests/test_health.py`](file:///d:/ANUP/Quizdesk/backend/tests/test_health.py) | Automated health check endpoint verification test suite. |
+| [`backend/README.md`](file:///d:/ANUP/Quizdesk/backend/README.md) | Essential setup, execution, and testing commands for Windows PowerShell. |
 | [`docs/PROJECT_LOG.md`](file:///d:/ANUP/Quizdesk/docs/PROJECT_LOG.md) | Chronological development log, verified execution records, and state memory. |
 | [`docs/DECISIONS.md`](file:///d:/ANUP/Quizdesk/docs/DECISIONS.md) | Formal numbered Architectural Decision Records (ADRs) with rationale and implications. |
 | [`docs/TASK_TRACKER.md`](file:///d:/ANUP/Quizdesk/docs/TASK_TRACKER.md) | Structured roadmap, task dependencies, status tracking, and acceptance criteria. |
 | [`docs/ARCHITECTURE.md`](file:///d:/ANUP/Quizdesk/docs/ARCHITECTURE.md) | Technical architecture, data flow diagrams, security boundaries, and planned component layout. |
+
 
 ---
 
@@ -112,8 +119,28 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Verified `.env.example` and `backend/.env.example` are trackable and not ignored.
 - **Action**: Initial Project Baseline Commit
   - Staged baseline documentation and `.gitignore`.
-  - Staged diff verified to ensure zero secrets or unintended files are present.
+  - Staged diff verified to ensure zero secrets or unintended files were present.
   - Executed initial commit with message: `chore: establish project baseline`.
+  - Verified commit hash: `7bdaff5e0412291a9c831d745437665f01c0232a` (short: `7bdaff5`) containing 6 files (`.gitignore`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PROJECT_LOG.md`, `docs/TASK_TRACKER.md`).
+
+### 2026-10-23: Phase 1 - Task 102: Python Virtual Environment & Minimal FastAPI Backend Scaffolding
+- **Action**: Created Root Python Virtual Environment
+  - Executed `python -m venv .venv` creating an isolated environment at repository root.
+  - Verified `.venv/` is ignored by Git in accordance with DEC-003.
+- **Action**: Scaffolded Minimal Backend Directory Structure
+  - Created `backend/app/main.py`, `backend/app/core/config.py`, `backend/app/__init__.py`, `backend/app/core/__init__.py`.
+  - Configured `Settings` with `pydantic-settings` BaseSettings.
+  - Implemented `GET /health` returning `{"status": "ok"}`.
+- **Action**: Pinned Backend Dependencies in `backend/requirements.txt`
+  - Added exact pinned versions for FastAPI (0.115.8), Uvicorn (0.34.0), Pydantic (2.10.6), Pydantic-Settings (2.7.1), SQLAlchemy (2.0.38), Alembic (1.14.1), Psycopg (3.2.4 binary), Pytest (8.3.4), Pytest-Asyncio (0.25.3), and HTTPX (0.28.1).
+- **Action**: Installed Dependencies into Root `.venv`
+  - Executed `.\.venv\Scripts\pip.exe install -r backend/requirements.txt`. All packages installed successfully without error.
+- **Action**: Configured Test Harness & Health Test
+  - Created `backend/pytest.ini` with `pythonpath = .`, `asyncio_mode = auto`, and `asyncio_default_fixture_loop_scope = function`.
+  - Created `backend/tests/test_health.py` verifying `GET /health` returns HTTP 200 and `{"status": "ok"}` via `httpx.AsyncClient`.
+  - Executed test suite with `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`. Test passed: 1 passed in 0.71s.
+- **Action**: Created `backend/README.md`
+  - Documented Windows PowerShell commands for virtual environment activation, dependency installation, server launch, and testing.
 
 ---
 
@@ -128,19 +155,37 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `git check-ignore -v .env .env.local .venv/ node_modules/` | `d:\ANUP\Quizdesk` | 0 | Confirmed all 4 patterns matched ignore rules in `.gitignore`. |
 | `git check-ignore -v .env.example backend/.env.example` | `d:\ANUP\Quizdesk` | 0 | Confirmed matched deliberate un-ignore rule `!**/.env.example`. |
 | Trackability test with temporary `.env.example` and `.env` | `d:\ANUP\Quizdesk` | 0 | Confirmed `.env.example` appeared in `git status --short` and `.env` was ignored. |
+| `git add .gitignore AGENTS.md docs/` | `d:\ANUP\Quizdesk` | 0 | Staged all 6 baseline project files. |
+| `git commit -m "chore: establish project baseline"` | `d:\ANUP\Quizdesk` | 0 | Commit created: `7bdaff5` (root-commit, 6 files changed, 1002 insertions). |
+| `git rev-parse HEAD` | `d:\ANUP\Quizdesk` | 0 | `7bdaff5e0412291a9c831d745437665f01c0232a`. |
+| `python --version` | `d:\ANUP\Quizdesk` | 0 | Python 3.13.5. |
+| `python -m venv .venv` | `d:\ANUP\Quizdesk` | 0 | Virtual environment created successfully in `.venv/`. |
+| `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `1 passed in 0.71s`. |
 
 ---
 
 ## 6. Dependencies Added / Removed
-- None. (Zero external packages installed in this setup task, adhering strictly to scope).
+- Added dependencies pinned in [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt):
+  - `fastapi==0.115.8`
+  - `uvicorn[standard]==0.34.0`
+  - `pydantic==2.10.6`
+  - `pydantic-settings==2.7.1`
+  - `sqlalchemy==2.0.38`
+  - `alembic==1.14.1`
+  - `psycopg[binary]==3.2.4`
+  - `pytest==8.3.4`
+  - `pytest-asyncio==0.25.3`
+  - `httpx==0.28.1`
 
 ---
 
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
-  - Verified presence of all 5 baseline documents and `.gitignore`.
-  - Verified `.gitignore` ignore and un-ignore logic via `git check-ignore`.
-  - Staged diff inspection before commit.
+  - Confirmed `.venv/` is ignored by Git via `git status --short`.
+- **Automated Health Check Test**:
+  - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
+  - Result: `backend\tests\test_health.py::test_health_check_returns_ok PASSED [100%]` (1 passed in 0.71s).
 
 ---
 
@@ -164,8 +209,9 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-102`: Python virtual environment & backend scaffolding**
-- Create dedicated Python virtual environment `.venv/`.
-- Initialize backend project layout with `pyproject.toml` (or `requirements.txt`) pinning FastAPI, Pydantic, SQLAlchemy, Alembic, and test tools.
-- Implement baseline health check endpoint (`GET /health`) and verify with `pytest`.
+**Task**: **`TASK-103`: Frontend Vite + React + TypeScript scaffolding**
+- Initialize Vite Single-Page Application non-interactively in `./frontend` with React and TypeScript.
+- Configure Tailwind CSS with the confirmed academic minimalist design tokens.
+- Set up React Router and verify dev server build.
+
 
