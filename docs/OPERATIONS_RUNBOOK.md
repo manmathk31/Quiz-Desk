@@ -198,7 +198,7 @@ For an initial college pilot of approximately 30–50 students, the simplest, mo
 
 ---
 
-## 9. Step-by-Step Production Deployment Guide (Vercel + Hugging Face Spaces + Supabase)
+## 9. Step-by-Step Production Deployment Guide (Cloudflare Pages + Hugging Face Spaces + Supabase)
 
 ### 9.1 Backend Deployment (Hugging Face Spaces via Docker)
 Hugging Face Spaces provides free 2 vCPU / 16 GB RAM Docker hosting with a **48-hour inactivity sleep window** (dramatically superior to typical 15-minute free tiers).
@@ -212,8 +212,8 @@ Hugging Face Spaces provides free 2 vCPU / 16 GB RAM Docker hosting with a **48-
    - **Visibility**: Public (required for free public API routing; application security is enforced at JWT/API level).
 
 2. **Repository & Directory Structure**:
-   - Either push the `backend` folder directly to the Space Git repository, or configure GitHub Actions / Space sync.
    - The root of the Space must contain the contents of `backend/` (specifically `Dockerfile`, `requirements.txt`, `alembic.ini`, `app/`, and `alembic/`).
+   - You can push the backend code directly to the Space's Git remote or configure GitHub sync.
 
 3. **Container Compatibility Invariants**:
    - **Port**: Hugging Face Spaces routes internal traffic to port `7860`. The `backend/Dockerfile` exposes and defaults to `7860` (`CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]`).
@@ -237,7 +237,7 @@ Hugging Face Spaces provides free 2 vCPU / 16 GB RAM Docker hosting with a **48-
      - `SUPABASE_URL`: `https://[PROJECT_REF].supabase.co`
      - `SUPABASE_JWT_ALGORITHM`: `HS256`
      - `SUPABASE_JWT_AUDIENCE`: `authenticated`
-     - `CORS_ORIGINS`: `["https://[YOUR_VERCEL_APP].vercel.app"]`
+     - `CORS_ORIGINS`: `["https://[YOUR_PAGES_APP].pages.dev", "http://localhost:5173"]`
      - `ADMIN_EMAIL`: `admin@institution.edu`
      - `ADMIN_NAME`: `Institutional Administrator`
 
@@ -248,40 +248,34 @@ Hugging Face Spaces provides free 2 vCPU / 16 GB RAM Docker hosting with a **48-
 
 ---
 
-### 9.2 Frontend Deployment (Vercel)
-Vercel hosts the React SPA with global edge caching and automatic SSL.
+### 9.2 Frontend Deployment (Cloudflare Pages - Recommended)
+Cloudflare Pages provides global Anycast edge hosting with **unmetered bandwidth, unlimited requests, and no non-commercial restrictions**, making it ideal for college and institutional quiz delivery.
 
-1. **Import Git Repository in Vercel**:
-   - Log into [Vercel](https://vercel.com) and click **Add New... > Project**.
-   - Select your Git repository.
+1. **Import Git Repository in Cloudflare Dashboard**:
+   - Log into [Cloudflare Dashboard](https://dash.cloudflare.com).
+   - In the sidebar, navigate to **Compute (Workers & Pages) > Create application > Pages > Connect to Git**.
+   - Select your GitHub repository (`Quiz-Desk` or `Quizdesk`).
+
+2. **Configure Build & Output Settings**:
+   - **Project Name**: `quizdesk` (generates `quizdesk.pages.dev`).
+   - **Production Branch**: `main`
    - **Framework Preset**: `Vite`
-   - **Root Directory**: Click "Edit" and choose `frontend`.
-   - **Build Command**: `npm run build` (or leave default).
-   - **Output Directory**: `dist` (default).
+   - **Root Directory**: `frontend`
+   - **Build Command**: `npm run build`
+   - **Build Output Directory**: `dist`
 
-2. **Configure Frontend Environment Variables**:
-   Under **Environment Variables**:
-   - `VITE_API_BASE_URL`: `https://[YOUR_HF_USERNAME]-[YOUR_SPACE_NAME].hf.space` (Note: HF Space direct URL format; remove trailing slash).
+3. **Configure Frontend Environment Variables**:
+   In Cloudflare Pages project settings (under **Settings > Environment variables > Production**):
+   - `VITE_API_BASE_URL`: `https://[YOUR_HF_USERNAME]-[YOUR_SPACE_NAME].hf.space` (Your Hugging Face Space direct URL without trailing slash).
    - `VITE_SUPABASE_URL`: `https://[PROJECT_REF].supabase.co`
    - `VITE_SUPABASE_ANON_KEY`: `[YOUR_PUBLIC_ANON_KEY]`
-   *(CRITICAL: Never add `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, or database credentials to Vercel).*
+   *(SECURITY INVARIANT: Never add `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, or database credentials to Cloudflare Pages).*
 
-3. **SPA Routing Configuration**:
-   - Handled automatically by [`frontend/vercel.json`](file:///d:/ANUP/Quizdesk/frontend/vercel.json):
-     ```json
-     {
-       "rewrites": [
-         {
-           "source": "/(.*)",
-           "destination": "/index.html"
-         }
-       ]
-     }
-     ```
+4. **SPA Client-Side Routing**:
+   - Handled automatically by [`frontend/public/_redirects`](file:///d:/ANUP/Quizdesk/frontend/public/_redirects) containing `/* /index.html 200`.
+   - Vite automatically copies this into `dist/_redirects` during `npm run build`, ensuring all React Router URLs resolve seamlessly on reload.
 
-4. **Plan & Academic Use Compliance**:
-   - Vercel Hobby is permitted for non-commercial evaluation and pilot testing.
-   - If university procurement policies require enterprise or commercial terms without licensing fees, Cloudflare Pages is a 100% free production alternative that uses the exact same build artifact (`dist/`) and `public/_redirects`.
+*(Note: Vercel remains supported as a tested secondary fallback via `frontend/vercel.json` if needed).*
 
 ---
 
@@ -308,15 +302,15 @@ Never run migrations automatically inside auto-scaling container startup scripts
 
 1. **Supabase Auth Redirect URLs**:
    In the Supabase Dashboard > **Authentication > URL Configuration**:
-   - **Site URL**: `https://[YOUR_VERCEL_APP].vercel.app`
+   - **Site URL**: `https://[YOUR_PAGES_APP].pages.dev`
    - **Redirect URLs**: Add:
-     - `https://[YOUR_VERCEL_APP].vercel.app/**`
-     - `https://[YOUR_VERCEL_APP].vercel.app/teacher/reset-password`
+     - `https://[YOUR_PAGES_APP].pages.dev/**`
+     - `https://[YOUR_PAGES_APP].pages.dev/teacher/reset-password`
      - `http://localhost:5173/**` (for ongoing local development)
 
 2. **Backend CORS Origins**:
    Ensure `CORS_ORIGINS` in Hugging Face Space settings includes:
-   `["https://[YOUR_VERCEL_APP].vercel.app", "http://localhost:5173"]`
+   `["https://[YOUR_PAGES_APP].pages.dev", "http://localhost:5173"]`
 
 ---
 

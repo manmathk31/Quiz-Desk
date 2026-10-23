@@ -460,15 +460,15 @@ This document tracks all formal architectural and product decisions for **Quizde
 
 ---
 
-### DEC-023: Production Hosting Architecture & Container Packaging (Vercel + Hugging Face Spaces + Supabase)
+### DEC-023: Production Hosting Architecture & Container Packaging (Cloudflare Pages + Hugging Face Spaces + Supabase)
 - **Status**: `Confirmed`
 - **Date**: 2026-10-23
 - **Decision**:
-  - **Frontend Hosting (Vercel)**:
+  - **Frontend Hosting (Cloudflare Pages - Primary)**:
     - Deployed as a static single-page application (SPA) from the `frontend/` directory using Vite build output (`dist`).
-    - Client-side React Router rewrites configured via `frontend/vercel.json` (`"rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]`).
+    - Client-side React Router rewrites configured via `frontend/public/_redirects` (`/* /index.html 200`), which is automatically copied to `dist/` on build.
     - Environment variables limited strictly to public client properties: `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-    - Plan considerations: Vercel Hobby tier is suitable for proof-of-concept and academic evaluation. For institutional pilots requiring formal compliance or shared team collaboration, Vercel Pro or zero-cost Cloudflare Pages are designated fallback alternatives.
+    - Plan & Institutional Policy Advantage: Cloudflare Pages is 100% free with **unlimited bandwidth, unlimited requests, and no non-commercial or institutional restrictions** (unlike Vercel Hobby's non-commercial clause). Vercel is retained as a tested secondary fallback via `frontend/vercel.json`.
   - **Backend Hosting (Hugging Face Spaces - Docker)**:
     - Packaged via production Docker container with Python 3.12 slim base.
     - Hugging Face Spaces port requirement: listens on internal default port `7860` (`EXPOSE 7860`, `CMD ... --port ${PORT:-7860}`) while maintaining dynamic `$PORT` compatibility.
@@ -478,7 +478,7 @@ This document tracks all formal architectural and product decisions for **Quizde
   - **Database & Authentication (Supabase)**:
     - Retains existing Supabase project for PostgreSQL 17 and Supabase Auth.
     - Connected via Supabase Session Pooler (port 5432) with calibrated bounds (`DB_POOL_SIZE=8`, `DB_MAX_OVERFLOW=4`) to honor free-tier connection limits while servicing 30+ concurrent students.
-    - Production CORS origins and Supabase Auth redirect URLs explicitly configured with the assigned Vercel production domain.
+    - Production CORS origins and Supabase Auth redirect URLs explicitly configured with the assigned Cloudflare Pages domain (`https://<project-name>.pages.dev`).
     - Database state verified: 0 active test users, 0 test quizzes, 0 test attempts, and 244 immutable audit records retained.
-- **Rationale**: Provides a zero-cost, high-reliability deployment stack with ample compute (2 vCPUs, 16 GB RAM), reasonable inactivity windows (48 hours), fast static global CDN distribution, and strict secret isolation.
-- **Implications**: Container configuration updated in `backend/Dockerfile`, Pydantic Settings updated for path resolution, hardcoded URLs eliminated in frontend pages, and deployment runbook documented in `docs/OPERATIONS_RUNBOOK.md`.
+- **Rationale**: Cloudflare Pages delivers unmetered bandwidth, zero licensing conflicts for colleges, instantaneous edge routing, and clean integration with Hugging Face Spaces and Supabase.
+- **Implications**: SPA routing rule established in `frontend/public/_redirects`, container configuration updated in `backend/Dockerfile`, and step-by-step Cloudflare Pages deployment documented in `docs/OPERATIONS_RUNBOOK.md`.
