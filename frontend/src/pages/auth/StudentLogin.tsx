@@ -9,7 +9,6 @@ import {
   Lock,
   Eye,
   EyeOff,
-  BookOpen,
   Loader2,
   ArrowRight,
   Info,
@@ -244,18 +243,6 @@ export const StudentLogin: React.FC = () => {
             )}
           </button>
         </form>
-
-        {/* Cross-portal switcher */}
-        <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span className="text-slate-500">Faculty or test administrator?</span>
-          <Link
-            to="/teacher/login"
-            className="inline-flex items-center space-x-1 font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Faculty Portal</span>
-          </Link>
-        </div>
       </div>
     </div>
   )

@@ -1093,22 +1093,20 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - Retained administrative overview at `/admin/overview`.
    - Enhanced `Overview.tsx` to measure live millisecond round-trip latency (`/health/live`) and PostgreSQL database connectivity (`/health/ready`).
    - Added live subsystem telemetry cards for API Gateway, Database, Supabase Auth, and Cloudflare Pages CDN.
-2. **Role-Contextual Header Navigation (`frontend/src/components/layout/Header.tsx`, `Footer.tsx`)**:
-   - Dynamically switches top-right action button:
-     - On faculty routes (`/teacher/*`): shows "Student Entrance" instead of awkward "Take Assessment".
-     - On student login (`/student/login`): shows "Faculty Portal".
-     - On root and public routes: displays primary "Take Assessment".
-   - Added persistent links to System Status, Student Entrance, and Faculty Portal in `Footer.tsx`.
+2. **Complete Abstraction of Faculty Portal Links (`Header.tsx`, `StudentLogin.tsx`, `Footer.tsx`, `AdminLogin.tsx`)**:
+   - Re-enforced strict isolation: **ZERO public or student-visible links to the faculty portal**.
+   - Removed "Faculty Portal" from Header navigation, mobile menu, Student Login card, and Footer.
+   - Header button is cleanly suppressed on `/student/login`, `/teacher/*`, and `/admin/*`.
+   - Public pages only display "Take Assessment" pointing to student entrance.
 3. **Modern, Sleek Authentication Redesign (`StudentLogin`, `TeacherLogin`, `AdminLogin`, `TeacherForgotPassword`, `TeacherResetPassword`)**:
    - Layered background styling with subtle atmospheric ambient glow orbs.
    - Frosted glassmorphism cards (`backdrop-blur-md`, `border-slate-200/80`, `shadow-xl`) with custom top gradient accent bars.
    - Input groups with leading icons (`Mail`, `Lock`, `KeyRound`) and smooth focus states.
    - Interactive password show/hide reveal toggles (`Eye` / `EyeOff`).
    - High-contrast gradient action buttons with loading spinners (`Loader2`).
-   - Cross-portal bottom navigation links for seamless portal switching.
 4. **Verification**:
    - Backend pytest suite: 173 passed in 13.19s.
-   - Frontend build: `tsc -b && vite build` built in 862ms with 0 errors.
+   - Frontend build: `tsc -b && vite build` built in 824ms with 0 errors.
 
 
 

@@ -18,10 +18,6 @@ export const Footer: React.FC = () => {
               Student Entrance
             </Link>
             <span className="text-slate-700">•</span>
-            <Link to="/teacher/login" className="hover:text-slate-200 transition-colors">
-              Faculty Portal
-            </Link>
-            <span className="text-slate-700">•</span>
             <Link
               to="/status"
               className="inline-flex items-center space-x-1 text-slate-400 hover:text-emerald-400 transition-colors"

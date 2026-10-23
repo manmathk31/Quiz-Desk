@@ -14,7 +14,6 @@ import {
   Loader2,
   ArrowRight,
   GraduationCap,
-  BookOpen,
 } from 'lucide-react'
 import { bootstrapAdminUser } from '../../services/adminApi'
 
@@ -290,20 +289,13 @@ export const AdminLogin: React.FC = () => {
         </form>
 
         {/* Cross-portal switcher */}
-        <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-xs">
+        <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-center text-xs">
           <Link
             to="/student/login"
             className="inline-flex items-center space-x-1 font-semibold text-blue-600 hover:text-blue-700 transition-colors"
           >
             <GraduationCap className="w-3.5 h-3.5" />
-            <span>Student Entrance</span>
-          </Link>
-          <Link
-            to="/teacher/login"
-            className="inline-flex items-center space-x-1 font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Faculty Portal</span>
+            <span>Return to Student Entrance</span>
           </Link>
         </div>
       </div>
