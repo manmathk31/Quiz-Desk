@@ -193,7 +193,7 @@ export const QuizPreviewModal: React.FC<QuizPreviewModalProps> = ({
                     Shuffle Questions: {previewData.shuffle_questions ? 'Yes' : 'No'}
                   </span>
                   <span className="px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700 font-medium">
-                    Multi-Answer: {previewData.multi_answer_policy.replace(/_/g, ' ')}
+                    Multi-Answer: {(previewData.multi_answer_policy || 'all_or_nothing').replace(/_/g, ' ')}
                   </span>
                   <span className="px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700 font-medium">
                     Tab-switch Warning: {previewData.tab_switch_limit} (Penalty: {previewData.tab_switch_penalty_marks} pts)

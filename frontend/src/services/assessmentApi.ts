@@ -5,6 +5,7 @@ import type {
   StudentQuizListResponse,
   AttemptStartResponse,
   AttemptContent,
+  AssessmentReadiness,
   AnswerSaveRequest,
   AnswerSaveResponse,
   TelemetryEventRequest,
@@ -30,6 +31,29 @@ export async function fetchStudentQuizzes(token: string): Promise<StudentQuizLis
   if (!response.ok) {
     const errorBody = await response.text()
     throw new Error(`Failed to load student assessments: ${response.status} - ${errorBody}`)
+  }
+
+  return response.json()
+}
+
+export async function fetchAssessmentReadiness(
+  token: string,
+  quizId: string
+): Promise<AssessmentReadiness> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/student/quizzes/${quizId}/readiness`, {
+    method: 'GET',
+    headers: authHeaders(token),
+  })
+
+  if (!response.ok) {
+    let errorDetail = `Failed to load readiness information (${response.status})`
+    try {
+      const err = await response.json()
+      if (err.detail) errorDetail = err.detail
+    } catch {
+      // fallback
+    }
+    throw new Error(errorDetail)
   }
 
   return response.json()

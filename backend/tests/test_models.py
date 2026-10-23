@@ -57,6 +57,7 @@ def test_unique_constraints_and_foreign_keys():
     assert "ck_quiz_version_time_window" in qv_constraints
     assert "ck_quiz_version_tab_limit" in qv_constraints
     assert "ck_quiz_version_tab_penalty" in qv_constraints
+    assert "ck_quiz_version_max_deduction" in qv_constraints
 
     quiz_fks = [fk for fk in tables["quiz_versions"].foreign_keys if fk.column.table.name == "quizzes"]
     assert len(quiz_fks) == 1
@@ -88,6 +89,8 @@ def test_unique_constraints_and_foreign_keys():
     assert "ck_quiz_attempt_number" in attempt_constraints
     assert "ck_quiz_attempt_deadline" in attempt_constraints
     assert "ck_quiz_attempt_tab_count" in attempt_constraints
+    assert "ck_quiz_attempt_deduction" in attempt_constraints
+    assert "ck_quiz_attempt_violation_count" in attempt_constraints
 
 
 def test_enum_specifications():
@@ -111,7 +114,11 @@ def test_alembic_migration_chain():
 
     heads = script.get_heads()
     assert len(heads) == 1
-    assert heads[0] == "0006_attempt_shuffling"
+    assert heads[0] == "0007_proctoring_hardening"
+
+    rev7 = script.get_revision("0007_proctoring_hardening")
+    assert rev7 is not None
+    assert rev7.down_revision == "0006_attempt_shuffling"
 
     rev6 = script.get_revision("0006_attempt_shuffling")
     assert rev6 is not None

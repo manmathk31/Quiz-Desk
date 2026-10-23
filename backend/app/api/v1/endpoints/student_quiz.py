@@ -11,6 +11,7 @@ from app.models.user import User
 from app.services.eligibility import check_student_quiz_eligibility
 from app.services.assessment_service import (
     list_student_quizzes,
+    get_assessment_readiness,
     start_or_resume_attempt,
     get_attempt_content,
     save_attempt_answer,
@@ -23,6 +24,7 @@ from app.schemas.assessment import (
     StudentQuizListResponse,
     AttemptStartResponse,
     AttemptContentResponse,
+    AssessmentReadinessResponse,
     AnswerSaveRequest,
     AnswerSaveResponse,
     TelemetryEventRequest,
@@ -84,6 +86,20 @@ def check_assessment_eligibility(
         is_open=res.is_open,
         status_message=res.status_message,
     )
+
+
+@router.get("/quizzes/{id}/readiness", response_model=AssessmentReadinessResponse)
+def get_quiz_assessment_readiness(
+    id: uuid.UUID,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db),
+):
+    """
+    Inquire assessment instructions, browser readiness requirements, and effective proctoring rules (DEC-021).
+    - Checks candidate eligibility and schedule.
+    - Provides full transparency on proctoring policy and penalty formulas before attempt starts.
+    """
+    return get_assessment_readiness(db, id, current_user)
 
 
 @router.post("/quizzes/{id}/attempts", response_model=AttemptStartResponse, status_code=status.HTTP_201_CREATED)

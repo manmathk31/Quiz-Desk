@@ -56,6 +56,8 @@ class QuizAttempt(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         CheckConstraint("attempt_number >= 1", name="ck_quiz_attempt_number"),
         CheckConstraint("deadline_at >= started_at", name="ck_quiz_attempt_deadline"),
         CheckConstraint("tab_switch_count >= 0", name="ck_quiz_attempt_tab_count"),
+        CheckConstraint("proctoring_deduction >= 0", name="ck_quiz_attempt_deduction"),
+        CheckConstraint("violation_count >= 0", name="ck_quiz_attempt_violation_count"),
         Index("ix_quiz_attempts_student_status", "student_id", "status"),
     )
 
@@ -84,8 +86,9 @@ class QuizAttempt(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Scoring & Release (DEC-010)
+    # Scoring & Release (DEC-010, DEC-021)
     total_score: Mapped[Optional[float]] = mapped_column(Numeric(6, 2), nullable=True)
+    proctoring_deduction: Mapped[float] = mapped_column(Numeric(5, 2), default=0.00, nullable=False)
     grading_status: Mapped[GradingStatus] = mapped_column(
         Enum(GradingStatus, name="grading_status_enum", native_enum=False),
         nullable=False,
@@ -93,8 +96,9 @@ class QuizAttempt(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     is_finalized: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # Telemetry Counter (DEC-009)
+    # Telemetry Counter (DEC-009, DEC-021)
     tab_switch_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    violation_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Stable Randomized Ordering (DEC-008, Phase 6)
     # question_order: list of question UUID strings (e.g. ["uuid1", "uuid2"])
@@ -180,6 +184,7 @@ class AttemptTelemetryEvent(Base, UUIDPrimaryKeyMixin):
         index=True,
     )
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    client_event_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     event_timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )

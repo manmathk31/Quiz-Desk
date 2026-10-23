@@ -34,6 +34,7 @@ import {
   Settings,
   Users,
   Award,
+  Shield,
 } from 'lucide-react'
 
 export const QuizBuilder: React.FC = () => {
@@ -66,8 +67,16 @@ export const QuizBuilder: React.FC = () => {
   const [shuffleQuestions, setShuffleQuestions] = useState(false)
   const [shuffleOptions, setShuffleOptions] = useState(false)
   const [multiAnswerPolicy, setMultiAnswerPolicy] = useState<MultiAnswerPolicy>('all_or_nothing')
-  const [tabSwitchLimit, setTabSwitchLimit] = useState(3)
-  const [tabSwitchPenaltyMarks, setTabSwitchPenaltyMarks] = useState(0.0)
+  const [tabSwitchLimit, setTabSwitchLimit] = useState(2)
+  const [tabSwitchPenaltyMarks, setTabSwitchPenaltyMarks] = useState(1.0)
+  const [maxProctoringDeduction, setMaxProctoringDeduction] = useState(5.0)
+  const [enableCopyPasteRestriction, setEnableCopyPasteRestriction] = useState(true)
+  const [countCopyPasteViolations, setCountCopyPasteViolations] = useState(true)
+  const [requireFullscreen, setRequireFullscreen] = useState(true)
+  const [countFullscreenExitViolations, setCountFullscreenExitViolations] = useState(true)
+  const [countTabSwitchViolations, setCountTabSwitchViolations] = useState(true)
+  const [countDevToolsViolations, setCountDevToolsViolations] = useState(true)
+  const [enableProctoringWarnings, setEnableProctoringWarnings] = useState(true)
 
   const loadQuizData = useCallback(async () => {
     if (!token || !quizId) return
@@ -93,9 +102,17 @@ export const QuizBuilder: React.FC = () => {
         setAllowBacktracking(currentV.allow_backtracking)
         setShuffleQuestions(currentV.shuffle_questions)
         setShuffleOptions(currentV.shuffle_options)
-        setMultiAnswerPolicy(currentV.multi_answer_policy)
-        setTabSwitchLimit(currentV.tab_switch_limit)
-        setTabSwitchPenaltyMarks(Number(currentV.tab_switch_penalty_marks))
+        setMultiAnswerPolicy(currentV.multi_answer_policy || 'all_or_nothing')
+        setTabSwitchLimit(currentV.tab_switch_limit ?? 2)
+        setTabSwitchPenaltyMarks(Number(currentV.tab_switch_penalty_marks ?? 1.0))
+        setMaxProctoringDeduction(Number(currentV.max_proctoring_deduction ?? 5.0))
+        setEnableCopyPasteRestriction(currentV.enable_copy_paste_restriction ?? true)
+        setCountCopyPasteViolations(currentV.count_copy_paste_violations ?? true)
+        setRequireFullscreen(currentV.require_fullscreen ?? true)
+        setCountFullscreenExitViolations(currentV.count_fullscreen_exit_violations ?? true)
+        setCountTabSwitchViolations(currentV.count_tab_switch_violations ?? true)
+        setCountDevToolsViolations(currentV.count_dev_tools_violations ?? true)
+        setEnableProctoringWarnings(currentV.enable_proctoring_warnings ?? true)
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load quiz.')
@@ -136,6 +153,14 @@ export const QuizBuilder: React.FC = () => {
       multi_answer_policy: multiAnswerPolicy,
       tab_switch_limit: tabSwitchLimit,
       tab_switch_penalty_marks: tabSwitchPenaltyMarks,
+      max_proctoring_deduction: maxProctoringDeduction,
+      enable_copy_paste_restriction: enableCopyPasteRestriction,
+      count_copy_paste_violations: countCopyPasteViolations,
+      require_fullscreen: requireFullscreen,
+      count_fullscreen_exit_violations: countFullscreenExitViolations,
+      count_tab_switch_violations: countTabSwitchViolations,
+      count_dev_tools_violations: countDevToolsViolations,
+      enable_proctoring_warnings: enableProctoringWarnings,
     }
 
     setIsSaving(true)
@@ -532,32 +557,174 @@ export const QuizBuilder: React.FC = () => {
               </label>
             </div>
 
-            {/* Telemetry Configuration */}
-            <div className="space-y-2 pt-2 border-t border-slate-200">
-              <label className="font-semibold text-slate-700 block">Proctoring Telemetry Settings</label>
-              <div className="grid grid-cols-2 gap-3">
+            {/* Proctoring & Academic Integrity Configuration */}
+            <div className="space-y-3 pt-3 border-t border-slate-200">
+              <div className="flex items-center space-x-1.5">
+                <Shield className="w-4 h-4 text-blue-600" />
+                <label className="font-semibold text-slate-800 text-xs">Proctoring & Academic Integrity</label>
+              </div>
+
+              {/* Penalty Formula Rules */}
+              <div className="grid grid-cols-3 gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
                 <div>
-                  <span className="text-[11px] text-slate-500 block mb-1">Tab Switch Warnings</span>
+                  <span className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                    Free Violations
+                  </span>
                   <input
                     type="number"
                     min="0"
-                    max="20"
+                    max="50"
                     value={tabSwitchLimit}
                     onChange={(e) => setTabSwitchLimit(parseInt(e.target.value) || 0)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    className="w-full px-2 py-1 border border-slate-300 rounded bg-white text-xs font-mono"
+                    title="Number of violations allowed before scoring deductions begin"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">0 = penalty immediate</span>
                 </div>
                 <div>
-                  <span className="text-[11px] text-slate-500 block mb-1">Penalty Deduction Marks</span>
+                  <span className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                    Deduction / Violation
+                  </span>
                   <input
                     type="number"
-                    step="0.25"
+                    step="0.5"
                     min="0"
+                    max="100"
                     value={tabSwitchPenaltyMarks}
                     onChange={(e) => setTabSwitchPenaltyMarks(parseFloat(e.target.value) || 0)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    className="w-full px-2 py-1 border border-slate-300 rounded bg-white text-xs font-mono"
+                    title="Marks deducted for each violation beyond the free allowance (supports half marks e.g. 0.5)"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Half-marks e.g. 0.5</span>
                 </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                    Max Total Deduction
+                  </span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="500"
+                    value={maxProctoringDeduction}
+                    onChange={(e) => setMaxProctoringDeduction(parseFloat(e.target.value) || 0)}
+                    className="w-full px-2 py-1 border border-slate-300 rounded bg-white text-xs font-mono"
+                    title="Maximum cumulative deduction cap for proctoring violations"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Cumulative cap</span>
+                </div>
+              </div>
+
+              {/* Event Policy Toggles */}
+              <div className="space-y-2 text-xs">
+                <label className="flex items-start space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableCopyPasteRestriction}
+                    onChange={(e) => setEnableCopyPasteRestriction(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                  />
+                  <div>
+                    <span className="font-medium text-slate-800">Restrict copy, cut, and paste</span>
+                    <span className="text-[11px] text-slate-500 block">
+                      Blocks clipboard operations and context menu in the active assessment.
+                    </span>
+                  </div>
+                </label>
+
+                {enableCopyPasteRestriction && (
+                  <label className="flex items-start space-x-2 pl-5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={countCopyPasteViolations}
+                      onChange={(e) => setCountCopyPasteViolations(e.target.checked)}
+                      className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                    />
+                    <div>
+                      <span className="font-medium text-slate-700">Count copy/paste attempts as violations</span>
+                      <span className="text-[11px] text-slate-500 block">
+                        Attempted copy/paste actions contribute to chargeable penalties.
+                      </span>
+                    </div>
+                  </label>
+                )}
+
+                <label className="flex items-start space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={requireFullscreen}
+                    onChange={(e) => setRequireFullscreen(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                  />
+                  <div>
+                    <span className="font-medium text-slate-800">Enforce fullscreen mode</span>
+                    <span className="text-[11px] text-slate-500 block">
+                      Requires candidate confirmation and fullscreen before attempt begins.
+                    </span>
+                  </div>
+                </label>
+
+                {requireFullscreen && (
+                  <label className="flex items-start space-x-2 pl-5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={countFullscreenExitViolations}
+                      onChange={(e) => setCountFullscreenExitViolations(e.target.checked)}
+                      className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                    />
+                    <div>
+                      <span className="font-medium text-slate-700">Count fullscreen exits as violations</span>
+                      <span className="text-[11px] text-slate-500 block">
+                        Exiting fullscreen records a distinct chargeable incident.
+                      </span>
+                    </div>
+                  </label>
+                )}
+
+                <label className="flex items-start space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={countTabSwitchViolations}
+                    onChange={(e) => setCountTabSwitchViolations(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                  />
+                  <div>
+                    <span className="font-medium text-slate-800">Count tab-switching & focus-loss as violations</span>
+                    <span className="text-[11px] text-slate-500 block">
+                      Deduplicated browser visibility and blur events apply to penalty quota.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={countDevToolsViolations}
+                    onChange={(e) => setCountDevToolsViolations(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                  />
+                  <div>
+                    <span className="font-medium text-slate-800">Intercept developer tools shortcuts</span>
+                    <span className="text-[11px] text-slate-500 block">
+                      F12 and Ctrl/Cmd+Shift+I shortcuts are intercepted and logged as violations.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableProctoringWarnings}
+                    onChange={(e) => setEnableProctoringWarnings(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                  />
+                  <div>
+                    <span className="font-medium text-slate-800">Show transparent live warning alerts</span>
+                    <span className="text-[11px] text-slate-500 block">
+                      Displays real-time violation counter and threshold alerts to student.
+                    </span>
+                  </div>
+                </label>
               </div>
             </div>
 

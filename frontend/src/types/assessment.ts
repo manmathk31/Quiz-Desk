@@ -70,8 +70,50 @@ export interface AttemptContent {
   is_finalized: boolean
   tab_switch_count: number
   tab_switch_limit: number
+  tab_switch_penalty_marks?: number
+  tab_switch_penalty?: number
+  violation_count?: number
+  free_violation_allowance?: number
+  violation_penalty_marks?: number
+  max_proctoring_deduction?: number
+  current_proctoring_deduction?: number
+  proctoring_deduction?: number
+  enable_copy_paste_restriction?: boolean
+  count_copy_paste_violations?: boolean
+  require_fullscreen?: boolean
+  count_fullscreen_exit_violations?: boolean
+  count_tab_switch_violations?: boolean
+  count_dev_tools_violations?: boolean
+  enable_proctoring_warnings?: boolean
   allow_backtracking: boolean
   questions: SanitizedQuestion[]
+}
+
+export interface AssessmentReadiness {
+  quiz_id: string
+  quiz_title: string
+  course_code: string
+  description?: string | null
+  opens_at: string
+  closes_at: string
+  duration_minutes: number
+  max_attempts: number
+  attempts_taken: number
+  allow_backtracking: boolean
+  free_violation_allowance: number
+  violation_penalty_marks: number
+  max_proctoring_deduction: number
+  enable_copy_paste_restriction: boolean
+  count_copy_paste_violations: boolean
+  require_fullscreen: boolean
+  count_fullscreen_exit_violations: boolean
+  count_tab_switch_violations: boolean
+  count_dev_tools_violations: boolean
+  enable_proctoring_warnings: boolean
+  has_active_attempt: boolean
+  active_attempt_id?: string | null
+  can_start: boolean
+  status_message: string
 }
 
 export interface AnswerSaveRequest {
@@ -89,13 +131,23 @@ export interface AnswerSaveResponse {
 
 export interface TelemetryEventRequest {
   event_type: string
+  client_event_id?: string
+  client_timestamp?: string
   event_data?: Record<string, unknown> | null
 }
 
 export interface TelemetryEventResponse {
   tab_switch_count: number
+  violation_count?: number
+  free_allowance?: number
+  remaining_free_violations?: number
+  chargeable_violations?: number
+  current_deduction?: number
+  proctoring_deduction?: number
   limit_exceeded: boolean
   tab_switch_limit: number
+  warning_message?: string | null
+  message?: string | null
 }
 
 export interface AttemptSubmissionResponse {

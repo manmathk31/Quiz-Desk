@@ -32,8 +32,17 @@ class QuizCreateRequest(BaseModel):
         MultiAnswerPolicy.ALL_OR_NOTHING,
         description="Scoring policy for questions with multiple correct options",
     )
-    tab_switch_limit: int = Field(3, ge=0, description="Proctoring telemetry warning threshold")
-    tab_switch_penalty_marks: float = Field(0.00, ge=0, description="Penalty deducted per excess tab switch")
+    # Proctoring & Academic Integrity Policies (DEC-009, DEC-021)
+    tab_switch_limit: int = Field(2, ge=0, le=100, description="Free violation allowance before penalties begin")
+    tab_switch_penalty_marks: float = Field(1.00, ge=0.0, le=100.0, description="Deduction per chargeable violation (supports half-marks e.g. 0.5)")
+    max_proctoring_deduction: float = Field(5.00, ge=0.0, le=500.0, description="Maximum total cumulative proctoring deduction")
+    enable_copy_paste_restriction: bool = Field(True, description="Intercept copy, cut, paste, and context menu within assessment")
+    count_copy_paste_violations: bool = Field(True, description="Count copy/paste attempts toward violation policy")
+    require_fullscreen: bool = Field(True, description="Enforce fullscreen mode during assessment")
+    count_fullscreen_exit_violations: bool = Field(True, description="Count fullscreen exits toward violation policy")
+    count_tab_switch_violations: bool = Field(True, description="Count tab switches and focus loss toward violation policy")
+    count_dev_tools_violations: bool = Field(True, description="Count developer-tools shortcut attempts toward violation policy")
+    enable_proctoring_warnings: bool = Field(True, description="Display violation warning notifications to candidate")
 
     @model_validator(mode="after")
     def validate_schedule(self) -> "QuizCreateRequest":
@@ -75,6 +84,14 @@ class QuizVersionResponse(BaseModel):
     multi_answer_policy: MultiAnswerPolicy
     tab_switch_limit: int
     tab_switch_penalty_marks: float
+    max_proctoring_deduction: float = 5.00
+    enable_copy_paste_restriction: bool = True
+    count_copy_paste_violations: bool = True
+    require_fullscreen: bool = True
+    count_fullscreen_exit_violations: bool = True
+    count_tab_switch_violations: bool = True
+    count_dev_tools_violations: bool = True
+    enable_proctoring_warnings: bool = True
     is_results_released: bool
     created_at: datetime
     questions: List[QuestionResponse] = []
@@ -156,6 +173,14 @@ class QuizPreviewResponse(BaseModel):
     multi_answer_policy: MultiAnswerPolicy
     tab_switch_limit: int
     tab_switch_penalty_marks: float
+    max_proctoring_deduction: float = 5.00
+    enable_copy_paste_restriction: bool = True
+    count_copy_paste_violations: bool = True
+    require_fullscreen: bool = True
+    count_fullscreen_exit_violations: bool = True
+    count_tab_switch_violations: bool = True
+    count_dev_tools_violations: bool = True
+    enable_proctoring_warnings: bool = True
     is_results_released: bool
     total_questions: int
     total_marks: float

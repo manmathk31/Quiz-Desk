@@ -19,6 +19,7 @@ import {
   RefreshCw,
   AlertOctagon,
   Check,
+  Shield,
 } from 'lucide-react'
 
 export const ActiveAssessment: React.FC = () => {
@@ -47,9 +48,13 @@ export const ActiveAssessment: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showSubmitModal, setShowSubmitModal] = useState(false)
 
-  // Telemetry warning modal/state
+  // Proctoring & Telemetry State
+  const [violationCount, setViolationCount] = useState<number>(0)
+  const [proctoringDeduction, setProctoringDeduction] = useState<number>(0)
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(true)
+  const [showPolicyModal, setShowPolicyModal] = useState<boolean>(false)
   const [telemetryWarning, setTelemetryWarning] = useState<string | null>(null)
-  const lastTelemetryTimeRef = useRef<number>(0)
+  const lastEventTimeMap = useRef<Record<string, number>>({})
 
   // Debounce autosave ref
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -64,6 +69,8 @@ export const ActiveAssessment: React.FC = () => {
       const data = await fetchAttemptContent(token, attemptId)
       setAttempt(data)
       setRemainingSeconds(data.remaining_seconds)
+      setViolationCount(data.violation_count ?? 0)
+      setProctoringDeduction(Number(data.proctoring_deduction ?? 0))
 
       // Initialize answers from server saved state
       const initialMap: Record<
@@ -112,39 +119,135 @@ export const ActiveAssessment: React.FC = () => {
     return () => clearInterval(interval)
   }, [remainingSeconds])
 
-  // Proctoring Telemetry Listeners (Tab Switch & Focus Loss)
-  useEffect(() => {
-    if (!token || !attemptId || !attempt || attempt.is_finalized) return
+  // Proctoring Incident Reporter with Idempotency and Rate Limiting
+  const reportProctoringEvent = useCallback(
+    async (eventType: string, eventData: Record<string, any> = {}) => {
+      if (!token || !attemptId || !attempt || attempt.is_finalized) return
 
-    const handleFocusLoss = async (eventType: string) => {
       const now = Date.now()
-      // Rate-limit telemetry to at most once per 2 seconds
-      if (now - lastTelemetryTimeRef.current < 2000) return
-      lastTelemetryTimeRef.current = now
+      const lastTime = lastEventTimeMap.current[eventType] || 0
+      // Rate-limit same event type to at most once per 1.5 seconds
+      if (now - lastTime < 1500) return
+      lastEventTimeMap.current[eventType] = now
+
+      const clientEventId =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `evt_${now}_${Math.random().toString(36).substring(2, 9)}`
 
       try {
         const res = await sendTelemetry(token, attemptId, {
           event_type: eventType,
-          event_data: { timestamp: new Date().toISOString() },
+          client_event_id: clientEventId,
+          event_data: { ...eventData, client_timestamp: new Date().toISOString() },
         })
-        if (res.limit_exceeded) {
+        if (res.violation_count !== undefined) {
+          setViolationCount(res.violation_count)
+        }
+        if (res.proctoring_deduction !== undefined) {
+          setProctoringDeduction(Number(res.proctoring_deduction))
+        }
+        if (res.message && attempt.enable_proctoring_warnings !== false) {
+          setTelemetryWarning(res.message)
+        } else if (res.limit_exceeded && attempt.enable_proctoring_warnings !== false) {
           setTelemetryWarning(
-            `Focus loss detected (${res.tab_switch_count} times). Tab-switch threshold (${res.tab_switch_limit}) exceeded; penalty deductions may apply.`
+            `Violation threshold reached (${res.violation_count} accepted violations). Proctoring deductions may apply.`
           )
         }
       } catch {
         // Non-blocking telemetry
       }
+    },
+    [token, attemptId, attempt]
+  )
+
+  // Fullscreen Enforcement Listener
+  useEffect(() => {
+    if (!attempt?.require_fullscreen) return
+
+    const checkFullscreen = () => {
+      const active = !!document.fullscreenElement
+      setIsFullscreen(active)
+      if (!active) {
+        reportProctoringEvent('fullscreen_exit')
+      }
     }
+
+    setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', checkFullscreen)
+    return () => {
+      document.removeEventListener('fullscreenchange', checkFullscreen)
+    }
+  }, [attempt?.require_fullscreen, reportProctoringEvent])
+
+  // Copy/Paste & Context Menu Prevention (Scoped to active assessment)
+  useEffect(() => {
+    if (!attempt?.enable_copy_paste_restriction) return
+
+    const handleCopyCutPaste = (e: ClipboardEvent) => {
+      e.preventDefault()
+      if (attempt.enable_proctoring_warnings !== false) {
+        setTelemetryWarning('Copy, cut, and paste actions are restricted during this assessment.')
+      }
+      reportProctoringEvent('copy_paste_attempt', { action: e.type })
+    }
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+      if (attempt.enable_proctoring_warnings !== false) {
+        setTelemetryWarning('Context menu is disabled during this assessment.')
+      }
+      reportProctoringEvent('copy_paste_attempt', { action: 'contextmenu' })
+    }
+
+    window.addEventListener('copy', handleCopyCutPaste)
+    window.addEventListener('cut', handleCopyCutPaste)
+    window.addEventListener('paste', handleCopyCutPaste)
+    window.addEventListener('contextmenu', handleContextMenu)
+
+    return () => {
+      window.removeEventListener('copy', handleCopyCutPaste)
+      window.removeEventListener('cut', handleCopyCutPaste)
+      window.removeEventListener('paste', handleCopyCutPaste)
+      window.removeEventListener('contextmenu', handleContextMenu)
+    }
+  }, [attempt?.enable_copy_paste_restriction, attempt?.enable_proctoring_warnings, reportProctoringEvent])
+
+  // Developer Tools Shortcuts Intercept (F12, Ctrl/Cmd+Shift+I/J/C, Ctrl/Cmd+U)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isDevTools =
+        e.key === 'F12' ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && ['I', 'i', 'J', 'j', 'C', 'c'].includes(e.key)) ||
+        ((e.ctrlKey || e.metaKey) && (e.key === 'u' || e.key === 'U'))
+
+      if (isDevTools) {
+        e.preventDefault()
+        if (attempt?.enable_proctoring_warnings !== false) {
+          setTelemetryWarning('Developer tools shortcuts are disabled during this assessment.')
+        }
+        reportProctoringEvent('dev_tools_shortcut', { key: e.key })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [attempt?.enable_proctoring_warnings, reportProctoringEvent])
+
+  // Tab Switching & Window Blur Listeners
+  useEffect(() => {
+    if (!token || !attemptId || !attempt || attempt.is_finalized) return
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        handleFocusLoss('tab_switch')
+        reportProctoringEvent('tab_switch')
       }
     }
 
     const onBlur = () => {
-      handleFocusLoss('window_blur')
+      reportProctoringEvent('window_blur')
     }
 
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -154,7 +257,7 @@ export const ActiveAssessment: React.FC = () => {
       document.removeEventListener('visibilitychange', onVisibilityChange)
       window.removeEventListener('blur', onBlur)
     }
-  }, [token, attemptId, attempt])
+  }, [token, attemptId, attempt, reportProctoringEvent])
 
   // Immediate or Debounced Save
   const performSave = useCallback(
@@ -400,6 +503,37 @@ export const ActiveAssessment: React.FC = () => {
               <span>{formatTimer(remainingSeconds)}</span>
             </div>
 
+            {/* Live Proctoring Status Indicator */}
+            <button
+              type="button"
+              onClick={() => setShowPolicyModal(true)}
+              className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                violationCount > (attempt.tab_switch_limit ?? 2)
+                  ? 'bg-red-950/80 border-red-500/60 text-red-300 hover:bg-red-900/80'
+                  : violationCount > 0
+                  ? 'bg-amber-950/80 border-amber-500/60 text-amber-300 hover:bg-amber-900/80'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'
+              }`}
+              title="Click to view proctoring policy and live violation details"
+            >
+              <Shield
+                className={`w-3.5 h-3.5 ${
+                  violationCount > (attempt.tab_switch_limit ?? 2)
+                    ? 'text-red-400'
+                    : violationCount > 0
+                    ? 'text-amber-400'
+                    : 'text-emerald-400'
+                }`}
+              />
+              <span className="hidden sm:inline">Violations:</span>
+              <span>{violationCount}</span>
+              {proctoringDeduction > 0 && (
+                <span className="font-mono text-red-400 font-bold ml-0.5">
+                  (-{proctoringDeduction.toFixed(2)})
+                </span>
+              )}
+            </button>
+
             {/* Submit Trigger */}
             <button
               onClick={() => setShowSubmitModal(true)}
@@ -412,6 +546,34 @@ export const ActiveAssessment: React.FC = () => {
           </div>
         </div>
       </header>
+
+      {/* Fullscreen Required Alert Banner */}
+      {attempt.require_fullscreen && !isFullscreen && (
+        <div className="bg-red-600 text-white px-4 py-2.5 text-xs font-semibold flex items-center justify-between shadow-inner">
+          <div className="flex items-center space-x-2">
+            <AlertOctagon className="w-4 h-4 shrink-0 animate-bounce" />
+            <span>
+              <strong>Fullscreen Exited:</strong> Fullscreen mode is mandatory for this assessment. Fullscreen exits are monitored and logged.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                if (document.documentElement.requestFullscreen) {
+                  await document.documentElement.requestFullscreen()
+                  setIsFullscreen(true)
+                }
+              } catch {
+                // browser blocked or unsupported
+              }
+            }}
+            className="px-3 py-1 bg-white text-red-700 hover:bg-red-50 rounded font-bold text-xs shadow-sm transition-colors cursor-pointer"
+          >
+            Return to Fullscreen
+          </button>
+        </div>
+      )}
 
       {/* Telemetry Alert Banner */}
       {telemetryWarning && (
@@ -685,6 +847,101 @@ export const ActiveAssessment: React.FC = () => {
                 ) : (
                   <span>Confirm & Submit</span>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Proctoring Policy & Status Modal */}
+      {showPolicyModal && attempt && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full border border-slate-200 p-6 text-slate-900">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <Shield className="w-5 h-5 text-blue-600" />
+                <h3 className="text-base font-bold text-slate-900">Proctoring Policy & Live Status</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPolicyModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-4 text-xs">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-3 gap-2 text-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div>
+                  <div className="text-base font-bold text-slate-800">{violationCount}</div>
+                  <div className="text-[11px] text-slate-500">Recorded Violations</div>
+                </div>
+                <div>
+                  <div className="text-base font-bold text-blue-600">
+                    {Math.max(0, (attempt.tab_switch_limit ?? 2) - violationCount)}
+                  </div>
+                  <div className="text-[11px] text-slate-500">Free Remaining</div>
+                </div>
+                <div>
+                  <div className="text-base font-bold text-red-600">
+                    -{proctoringDeduction.toFixed(2)}
+                  </div>
+                  <div className="text-[11px] text-slate-500">Current Deduction</div>
+                </div>
+              </div>
+
+              {/* Rules Breakdown */}
+              <div className="space-y-2">
+                <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                  Configured Assessment Rules
+                </h4>
+                <ul className="space-y-1.5 text-slate-600 list-disc list-inside">
+                  <li>
+                    <strong>Free Allowance:</strong> First {attempt.tab_switch_limit ?? 2} violations are free with 0 penalty deduction.
+                  </li>
+                  <li>
+                    <strong>Deduction Rate:</strong> {Number(attempt.tab_switch_penalty_marks ?? attempt.tab_switch_penalty ?? 1).toFixed(2)} marks deducted per chargeable violation thereafter.
+                  </li>
+                  <li>
+                    <strong>Maximum Deduction:</strong> Capped at {Number(attempt.max_proctoring_deduction ?? 5).toFixed(2)} marks total (deduction never exceeds your score).
+                  </li>
+                  <li>
+                    <strong>Copy / Paste:</strong>{' '}
+                    {attempt.enable_copy_paste_restriction
+                      ? `Restricted (${attempt.count_copy_paste_violations ? 'counts as violation' : 'blocked only'})`
+                      : 'Allowed'}
+                  </li>
+                  <li>
+                    <strong>Fullscreen Requirement:</strong>{' '}
+                    {attempt.require_fullscreen
+                      ? `Required (${attempt.count_fullscreen_exit_violations ? 'exits count as violation' : 'monitored only'})`
+                      : 'Optional'}
+                  </li>
+                  <li>
+                    <strong>Tab / Focus Switching:</strong>{' '}
+                    {attempt.count_tab_switch_violations ? 'Counts toward violation policy' : 'Monitored without score penalty'}
+                  </li>
+                  <li>
+                    <strong>Developer Tools Shortcuts:</strong>{' '}
+                    {attempt.count_dev_tools_violations ? 'Restricted (counts as violation)' : 'Monitored'}
+                  </li>
+                </ul>
+              </div>
+
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-900 text-[11px] leading-relaxed">
+                <strong>Transparent Scoring:</strong> Telemetry events are deduplicated and validated on the backend. Your score before deductions and the proctoring deduction are kept separate and auditable.
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowPolicyModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

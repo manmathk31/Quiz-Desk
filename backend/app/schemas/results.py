@@ -43,6 +43,8 @@ class AttemptListItemResponse(BaseModel):
     total_score: Optional[float] = None
     grading_status: str
     tab_switch_count: int
+    violation_count: int = 0
+    proctoring_deduction: float = 0.0
     is_finalized: bool
     adjustment_count: int = 0
 
@@ -91,6 +93,7 @@ class TelemetryEventItem(BaseModel):
     """Telemetry focus loss / tab switch event."""
     id: uuid.UUID
     event_type: str
+    client_event_id: Optional[str] = None
     event_timestamp: datetime
     event_data: Optional[Dict[str, Any]] = None
 
@@ -117,6 +120,10 @@ class AttemptDetailResponse(BaseModel):
     max_possible_marks: float
     grading_status: str
     tab_switch_count: int
+    violation_count: int = 0
+    proctoring_deduction: float = 0.0
+    effective_policy: Optional[Dict[str, Any]] = None
+    violation_breakdown: Optional[Dict[str, int]] = None
     is_finalized: bool
     questions: List[QuestionResultDetail]
     adjustments: List[GradeAdjustmentItem] = Field(default_factory=list)
@@ -159,6 +166,8 @@ class StudentAttemptResultResponse(BaseModel):
     started_at: datetime
     submitted_at: Optional[datetime] = None
     total_score: float
+    proctoring_deduction: float = 0.0
+    violation_count: int = 0
     max_possible_score: float
     grading_status: str
     tab_switch_count: int

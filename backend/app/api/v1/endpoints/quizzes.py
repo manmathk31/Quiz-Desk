@@ -64,6 +64,14 @@ def _serialize_version_response(version: QuizVersion) -> QuizVersionResponse:
         multi_answer_policy=version.multi_answer_policy,
         tab_switch_limit=version.tab_switch_limit,
         tab_switch_penalty_marks=float(version.tab_switch_penalty_marks),
+        max_proctoring_deduction=float(version.max_proctoring_deduction) if version.max_proctoring_deduction is not None else 5.00,
+        enable_copy_paste_restriction=version.enable_copy_paste_restriction,
+        count_copy_paste_violations=version.count_copy_paste_violations,
+        require_fullscreen=version.require_fullscreen,
+        count_fullscreen_exit_violations=version.count_fullscreen_exit_violations,
+        count_tab_switch_violations=version.count_tab_switch_violations,
+        count_dev_tools_violations=version.count_dev_tools_violations,
+        enable_proctoring_warnings=version.enable_proctoring_warnings,
         is_results_released=version.is_results_released,
         created_at=version.created_at,
         questions=[
@@ -233,6 +241,14 @@ def _ensure_active_draft_version(quiz: Quiz, db: Session) -> QuizVersion:
         multi_answer_policy=latest_pub.multi_answer_policy,
         tab_switch_limit=latest_pub.tab_switch_limit,
         tab_switch_penalty_marks=latest_pub.tab_switch_penalty_marks,
+        max_proctoring_deduction=latest_pub.max_proctoring_deduction,
+        enable_copy_paste_restriction=latest_pub.enable_copy_paste_restriction,
+        count_copy_paste_violations=latest_pub.count_copy_paste_violations,
+        require_fullscreen=latest_pub.require_fullscreen,
+        count_fullscreen_exit_violations=latest_pub.count_fullscreen_exit_violations,
+        count_tab_switch_violations=latest_pub.count_tab_switch_violations,
+        count_dev_tools_violations=latest_pub.count_dev_tools_violations,
+        enable_proctoring_warnings=latest_pub.enable_proctoring_warnings,
     )
     db.add(new_draft)
     db.flush()
@@ -371,6 +387,14 @@ async def create_quiz(
         multi_answer_policy=payload.multi_answer_policy,
         tab_switch_limit=payload.tab_switch_limit,
         tab_switch_penalty_marks=payload.tab_switch_penalty_marks,
+        max_proctoring_deduction=payload.max_proctoring_deduction,
+        enable_copy_paste_restriction=payload.enable_copy_paste_restriction,
+        count_copy_paste_violations=payload.count_copy_paste_violations,
+        require_fullscreen=payload.require_fullscreen,
+        count_fullscreen_exit_violations=payload.count_fullscreen_exit_violations,
+        count_tab_switch_violations=payload.count_tab_switch_violations,
+        count_dev_tools_violations=payload.count_dev_tools_violations,
+        enable_proctoring_warnings=payload.enable_proctoring_warnings,
     )
     db.add(draft_version)
     db.flush()
@@ -511,6 +535,14 @@ async def update_quiz(
     draft.multi_answer_policy = payload.multi_answer_policy
     draft.tab_switch_limit = payload.tab_switch_limit
     draft.tab_switch_penalty_marks = payload.tab_switch_penalty_marks
+    draft.max_proctoring_deduction = payload.max_proctoring_deduction
+    draft.enable_copy_paste_restriction = payload.enable_copy_paste_restriction
+    draft.count_copy_paste_violations = payload.count_copy_paste_violations
+    draft.require_fullscreen = payload.require_fullscreen
+    draft.count_fullscreen_exit_violations = payload.count_fullscreen_exit_violations
+    draft.count_tab_switch_violations = payload.count_tab_switch_violations
+    draft.count_dev_tools_violations = payload.count_dev_tools_violations
+    draft.enable_proctoring_warnings = payload.enable_proctoring_warnings
 
     db.commit()
     db.refresh(quiz)
@@ -804,6 +836,14 @@ async def preview_quiz(
         multi_answer_policy=active_version.multi_answer_policy,
         tab_switch_limit=active_version.tab_switch_limit,
         tab_switch_penalty_marks=float(active_version.tab_switch_penalty_marks),
+        max_proctoring_deduction=float(active_version.max_proctoring_deduction) if active_version.max_proctoring_deduction is not None else 5.00,
+        enable_copy_paste_restriction=active_version.enable_copy_paste_restriction,
+        count_copy_paste_violations=active_version.count_copy_paste_violations,
+        require_fullscreen=active_version.require_fullscreen,
+        count_fullscreen_exit_violations=active_version.count_fullscreen_exit_violations,
+        count_tab_switch_violations=active_version.count_tab_switch_violations,
+        count_dev_tools_violations=active_version.count_dev_tools_violations,
+        enable_proctoring_warnings=active_version.enable_proctoring_warnings,
         is_results_released=active_version.is_results_released,
         total_questions=total_q,
         total_marks=total_m,

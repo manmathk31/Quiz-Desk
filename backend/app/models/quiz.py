@@ -101,6 +101,7 @@ class QuizVersion(Base, UUIDPrimaryKeyMixin):
         CheckConstraint("closes_at > opens_at", name="ck_quiz_version_time_window"),
         CheckConstraint("tab_switch_limit >= 0", name="ck_quiz_version_tab_limit"),
         CheckConstraint("tab_switch_penalty_marks >= 0", name="ck_quiz_version_tab_penalty"),
+        CheckConstraint("max_proctoring_deduction >= 0", name="ck_quiz_version_max_deduction"),
     )
 
     quiz_id: Mapped[uuid.UUID] = mapped_column(
@@ -132,11 +133,23 @@ class QuizVersion(Base, UUIDPrimaryKeyMixin):
         default=MultiAnswerPolicy.ALL_OR_NOTHING,
     )
 
-    # Telemetry Configuration (DEC-009)
-    tab_switch_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    # Telemetry Configuration & Proctoring Policy (DEC-009, DEC-021)
+    # tab_switch_limit serves as the free violation allowance (default 2 for new quizzes)
+    tab_switch_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    # tab_switch_penalty_marks serves as deduction per chargeable violation
     tab_switch_penalty_marks: Mapped[float] = mapped_column(
-        Numeric(5, 2), nullable=False, default=0.00
+        Numeric(5, 2), nullable=False, default=1.00
     )
+    max_proctoring_deduction: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, default=5.00
+    )
+    enable_copy_paste_restriction: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    count_copy_paste_violations: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    require_fullscreen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    count_fullscreen_exit_violations: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    count_tab_switch_violations: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    count_dev_tools_violations: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enable_proctoring_warnings: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # Result Release Workflow (DEC-010)
     is_results_released: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

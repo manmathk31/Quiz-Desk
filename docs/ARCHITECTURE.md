@@ -196,12 +196,32 @@ sequenceDiagram
    - Only teachers assigned to a course or institutional administrators can manage quiz configurations or inspect class-wide grades.
    - PRN is an academic identifier, not a credential or token.
 4. **Auditability & Traceability**:
-   - Any modification to scores post-submission generates an unalterable audit log entry containing `adjusted_by`, `old_score`, `new_score`, `reason`, and `timestamp`.
-   - Tab-switching events are recorded as telemetry metadata, giving teachers objective context without triggering opaque automated penalties.
-5. **Zero-Trust Network Operations**:
+   - Tab-switching and proctoring events are recorded as telemetry metadata and validated transactionally on the backend (DEC-021).
+5. **Hardened Assessment Integrity & Configurable Proctoring (DEC-021)**:
+   - **Teacher-Configurable Policy**: Free violation allowance ($F$), deduction rate ($D$, supporting half marks e.g. 0.5), and cumulative maximum deduction cap ($C$) configured per quiz version.
+   - **Bounded Scoring Formula**:
+     $$\text{chargeable\_violations} = \max(0, V - F)$$
+     $$\text{proctoring\_deduction} = \min(\text{chargeable\_violations} \times D, C, \max(0, S))$$
+     $$\text{final\_score} = \max(0, S - \text{proctoring\_deduction})$$
+     Ensures deductions never exceed the cumulative cap or the student's earned raw score, strictly guaranteeing non-negative results ($S \ge 0$).
+   - **Telemetry Invariants & Idempotency**:
+     - Client sends unique `client_event_id` with every event, preventing retry duplicates.
+     - Paired `window_blur` and `tab_switch` browser signals within 1000ms are deduplicated on the server.
+     - Rejection of invalid, unsupported, or deceptive telemetry (e.g., fake screenshot signals). No simulated or unverified OS-level detection claims.
+   - **Pre-Quiz Assessment Readiness Screen**:
+     - Mandatory review of proctoring policies, attempt limits, navigation constraints, and penalties.
+     - Automated browser capability verification, Fullscreen API support check, and server connectivity validation.
+     - Fullscreen mode initiated exclusively in response to explicit student confirmation.
+   - **In-Assessment Deterrents & Transparency**:
+     - Assessment-scoped prevention of copy, cut, paste, and context menu.
+     - Fullscreen exit listeners trigger immediate top banners prompting return to fullscreen.
+     - Live violation indicator displays accepted count, remaining free quota, and cumulative penalty deductions.
+   - **Audit & Teacher Diagnostics**:
+     - Attempt details provide breakdown by event category, effective policy snapshot, and timestamped event history.
+6. **Zero-Trust Network Operations**:
    - Passwords and service keys are never returned in API payloads or logged in debug output.
    - Database connection pools use encrypted TLS connections.
-6. **Authoritative Application Role Verification**:
+7. **Authoritative Application Role Verification**:
    - Authentication tokens issued by Supabase cryptographically verify identity (`sub` claim), but never grant application permissions directly.
    - User roles (`student`, `teacher`, `admin`) are strictly resolved from the application database table (`users.role`).
    - Role claims or user metadata embedded in the JWT payload or request body are completely untrusted and ignored for authorization.

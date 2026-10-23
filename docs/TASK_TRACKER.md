@@ -116,6 +116,15 @@ This document tracks all implementation tasks for **Quizdesk**. Each task is ass
 
 ---
 
+## Phase 8A: Assessment Proctoring Hardening, Configurable Penalties & Student Violation UX
+**Goal**: Strongest practical, fair, transparent, and maintainable browser-based proctoring controls, configurable penalties, policy snapshots, readiness checks, and teacher telemetry diagnostics.
+
+| Task ID | Task Title | Status | Dependencies | Acceptance Criteria |
+|---|---|---|---|---|
+| `TASK-801A` | Assessment Proctoring Hardening & Configurable Penalties | `Completed` | Phase 6, Phase 7 | - Migration `0007_proctoring_hardening.py` adding check constraints and proctoring fields to `quiz_versions`, `quiz_attempts`, and `attempt_telemetry_events`.<br>- Configurable free violations ($F$), deduction rate ($D$, supporting half marks e.g. 0.5), and cumulative cap ($C$).<br>- Authoritative penalty formula: $\text{chargeable} = \max(0, V - F)$, $\text{deduction} = \min(\text{chargeable} \times D, C, \max(0, S))$, $\text{final} = \max(0, S - \text{deduction})$, guaranteed non-negative score.<br>- Server-authoritative telemetry hardening: idempotency via `client_event_id`, paired blur/switch deduplication within 1000ms, rate limiting, and rejection of invalid/fake event types.<br>- Pre-quiz readiness screen (`AssessmentReadinessModal.tsx`) disclosing all rules, verifying browser capabilities and Fullscreen API support, and requiring explicit confirmation.<br>- Active assessment controls (`ActiveAssessment.tsx`): scoped clipboard/contextmenu prevention, fullscreen enforcement with exit prompt, DevTools shortcut intercept, and live violation pill.<br>- Teacher QuizBuilder proctoring settings card and QuizResults telemetry diagnostics modal.<br>- Verified with 137 backend tests passing, 0 frontend linter errors, and clean frontend production build. |
+
+---
+
 ## Phase 8: Testing, Security Verification & Concurrent Load Simulation
 **Goal**: Comprehensive test coverage across backend, frontend, end-to-end user flows, and realistic concurrent-load testing.
 

@@ -34,6 +34,8 @@ export interface AttemptListItem {
   total_score: number | null
   grading_status: 'pending' | 'auto_graded' | 'manually_adjusted'
   tab_switch_count: number
+  violation_count?: number
+  proctoring_deduction?: number
   is_finalized: boolean
   adjustment_count: number
 }
@@ -77,8 +79,23 @@ export interface GradeAdjustment {
 export interface TelemetryEvent {
   id: string
   event_type: string
+  client_event_id?: string | null
   event_timestamp: string
   event_data: Record<string, unknown> | null
+}
+
+export interface EffectiveProctoringPolicy {
+  version_number?: number
+  free_allowance?: number
+  deduction_per_violation?: number
+  max_deduction?: number
+  enable_copy_paste_restriction?: boolean
+  count_copy_paste_violations?: boolean
+  require_fullscreen?: boolean
+  count_fullscreen_exit_violations?: boolean
+  count_tab_switch_violations?: boolean
+  count_dev_tools_violations?: boolean
+  enable_proctoring_warnings?: boolean
 }
 
 export interface AttemptDetail {
@@ -100,6 +117,10 @@ export interface AttemptDetail {
   max_possible_marks: number
   grading_status: string
   tab_switch_count: number
+  violation_count?: number
+  proctoring_deduction?: number
+  effective_policy?: EffectiveProctoringPolicy
+  violation_breakdown?: Record<string, number>
   is_finalized: boolean
   questions: QuestionResultDetail[]
   adjustments: GradeAdjustment[]

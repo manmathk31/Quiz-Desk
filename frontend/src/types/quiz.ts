@@ -23,9 +23,17 @@ export interface QuizCreatePayload {
   allow_backtracking: boolean
   shuffle_questions: boolean
   shuffle_options: boolean
-  multi_answer_policy: MultiAnswerPolicy
+  multi_answer_policy?: MultiAnswerPolicy
   tab_switch_limit: number
   tab_switch_penalty_marks: number
+  max_proctoring_deduction?: number
+  enable_copy_paste_restriction?: boolean
+  count_copy_paste_violations?: boolean
+  require_fullscreen?: boolean
+  count_fullscreen_exit_violations?: boolean
+  count_tab_switch_violations?: boolean
+  count_dev_tools_violations?: boolean
+  enable_proctoring_warnings?: boolean
 }
 
 export interface QuizUpdatePayload extends QuizCreatePayload {}
@@ -69,9 +77,17 @@ export interface QuizVersion {
   allow_backtracking: boolean
   shuffle_questions: boolean
   shuffle_options: boolean
-  multi_answer_policy: MultiAnswerPolicy
+  multi_answer_policy?: MultiAnswerPolicy
   tab_switch_limit: number
   tab_switch_penalty_marks: number
+  max_proctoring_deduction?: number
+  enable_copy_paste_restriction?: boolean
+  count_copy_paste_violations?: boolean
+  require_fullscreen?: boolean
+  count_fullscreen_exit_violations?: boolean
+  count_tab_switch_violations?: boolean
+  count_dev_tools_violations?: boolean
+  enable_proctoring_warnings?: boolean
   is_results_released: boolean
   created_at: string
   questions: Question[]
@@ -114,9 +130,17 @@ export interface QuizPreview {
   allow_backtracking: boolean
   shuffle_questions: boolean
   shuffle_options: boolean
-  multi_answer_policy: MultiAnswerPolicy
+  multi_answer_policy?: MultiAnswerPolicy
   tab_switch_limit: number
   tab_switch_penalty_marks: number
+  max_proctoring_deduction?: number
+  enable_copy_paste_restriction?: boolean
+  count_copy_paste_violations?: boolean
+  require_fullscreen?: boolean
+  count_fullscreen_exit_violations?: boolean
+  count_tab_switch_violations?: boolean
+  count_dev_tools_violations?: boolean
+  enable_proctoring_warnings?: boolean
   is_results_released: boolean
   total_questions: number
   total_marks: number

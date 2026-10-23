@@ -33,6 +33,7 @@ This document tracks all formal architectural and product decisions for **Quizde
 | [DEC-018](#dec-018-student-roster-ingestion-identity-alignment-and-server-authoritative-eligibility) | Student Roster Ingestion & Eligibility Gate | `Confirmed` | 2026-10-23 |
 | [DEC-019](#dec-019-secure-student-assessment-engine-shuffling-persistence-autosave-invariants-and-authoritative-grading) | Secure Assessment Delivery, Autosave & Grading | `Confirmed` | 2026-10-23 |
 | [DEC-020](#dec-020-teacher-results-management-score-adjustments-controlled-release-and-csv-export) | Teacher Results, Adjustments, Release & Export | `Confirmed` | 2026-10-23 |
+| [DEC-021](#dec-021-assessment-proctoring-hardening-configurable-penalties--audit-diagnostics) | Assessment Proctoring Hardening, Configurable Penalties & Audit Diagnostics | `Confirmed` | 2026-10-23 |
 
 ---
 
@@ -371,6 +372,50 @@ This document tracks all formal architectural and product decisions for **Quizde
     - Empty assessments return standard headers without error.
 - **Rationale**: Ensures complete institutional accountability for post-exam score modifications, guarantees privacy and security for student cohorts, and delivers clean academic reporting.
 - **Implications**: Leverages existing `grade_adjustments`, `audit_events`, and `quiz_versions` tables without requiring schema migrations; endpoints mounted under `/api/v1/quizzes/{id}/results`.
+
+---
+
+### DEC-021: Assessment Proctoring Hardening, Configurable Penalties & Audit Diagnostics
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Granular Teacher-Configurable Proctoring Policy & Sensible Defaults**:
+    - Each assessment version snapshot specifies:
+      - `tab_switch_limit` (free violation allowance, default 2, min 0).
+      - `tab_switch_penalty_marks` (deduction per violation, default 1.0, supports half-marks e.g. 0.5).
+      - `max_proctoring_deduction` (cumulative penalty cap, default 5.0).
+      - `enable_copy_paste_restriction` (default true) & `count_copy_paste_violations` (default true).
+      - `require_fullscreen` (default true) & `count_fullscreen_exit_violations` (default true).
+      - `count_tab_switch_violations` (default true).
+      - `count_dev_tools_violations` (default true).
+      - `enable_proctoring_warnings` (default true).
+    - Existing quizzes and immutable published versions retain their established settings and historical behavior.
+  - **Authoritative & Bounded Penalty Scoring Formula**:
+    - Calculated as:
+      $$\text{chargeable\_violations} = \max(0, V - F)$$
+      $$\text{proctoring\_deduction} = \min(\text{chargeable\_violations} \times D, C, \max(0, S))$$
+      $$\text{final\_score} = \max(0, S - \text{proctoring\_deduction})$$
+    - Stored independently on `QuizAttempt.proctoring_deduction` and `QuizAttempt.violation_count`.
+    - Never reduces final scores below zero, never exceeds configured cumulative cap $C$, and never exceeds student's available earned score $S$.
+    - Deductions are applied exactly once during finalization and persist consistently across recalculations, reviews, and retries.
+  - **Hardened Server-Authoritative Telemetry Invariants**:
+    - Every telemetry event accepts an optional idempotent `client_event_id` (indexed in `attempt_telemetry_events`), preventing retry duplication.
+    - Paired browser visibility and blur events (e.g., rapid Alt+Tab firing both `window_blur` and `tab_switch`) are deduplicated within a 1.0-second sliding window.
+    - Rate-limiting prevents event flooding (max 1 event per 1.5 seconds from client per event type).
+    - Only valid, policy-supported event types contribute to chargeable violations (`tab_switch`, `window_blur`, `fullscreen_exit`, `copy_paste_attempt`, `dev_tools_shortcut`).
+    - Rejection of invalid, unsupported, or deceptive event types (e.g. fake screenshot signals). No unsubstantiated claims of OS-level screenshot detection or universal AI assistant identification.
+  - **Pre-Quiz Assessment Readiness Screen**:
+    - Student must review full proctoring rules, navigation rules, time limit, and penalty calculation breakdown before beginning attempt.
+    - Automated client-side capability checks verify browser environment, Fullscreen API support, and server connectivity.
+    - Fullscreen is requested in direct response to user confirmation click, adhering to strict browser user-gesture requirements.
+  - **Transparent In-Assessment Violation UX**:
+    - Scoped deterrents prevent clipboard copying, cutting, pasting, and context menu within the assessment container.
+    - Fullscreen exit listeners trigger a persistent top banner prompting immediate return to fullscreen.
+    - Compact, non-intrusive live violation indicator displays accepted count, remaining free quota, and cumulative score deduction.
+  - **Teacher Results Telemetry Diagnostics**:
+    - Teacher attempt detail modal presents violation breakdown by event category, effective policy snapshot, and timestamped event history.
+- **Rationale**: Replaces hardcoded tab-switch rules with teacher-configurable academic integrity policies; provides complete fairness and auditability while preventing browser-based student cheating.
+- **Implications**: Schema updated in migration `0007_proctoring_hardening.py` adding check constraints and proctoring columns on `quiz_versions`, `quiz_attempts`, and `attempt_telemetry_events`.
 
 
 

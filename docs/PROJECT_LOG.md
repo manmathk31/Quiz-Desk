@@ -8,7 +8,7 @@ This document is the single authoritative historical log and persistent memory f
 
 - **Project Name**: Quizdesk
 - **Core Purpose**: A high-reliability, real college quiz and assessment platform featuring separate student and teacher experiences. Engineered for scheduled examinations, strict academic integrity, automated grading, server-authoritative timings, and resilient autosaving under concurrent loads.
-- **Current Development Stage**: **Phase 7: Teacher Results, Grading, Result Release and Reporting (Completed)**
+- **Current Development Stage**: **Phase 8A: Harden Assessment Proctoring, Configurable Penalties, and Student Violation UX (Completed)**
 - **Working Directory**: `d:\ANUP\Quizdesk`
 - **Active Branch**: `main`
 
@@ -585,6 +585,37 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Ran frontend linter (`oxlint`): **0 errors across 42 files**.
   - Ran frontend production build (`tsc -b && vite build`): **passed in 885ms with 0 errors**.
 
+### Phase 8A: Harden Assessment Proctoring, Configurable Penalties & Student Violation UX (2026-10-23)
+- **Status**: Completed & Verified
+- **Scope**: Strongest practical, fair, transparent, and maintainable browser-based proctoring controls, configurable penalties, policy snapshots, readiness checks, and teacher telemetry diagnostics.
+- **Action**: Database & Migration Foundation
+  - Created Alembic migration `0007_proctoring_hardening.py` adding check constraint `ck_quiz_version_max_deduction`, `max_proctoring_deduction` (default 5.00), policy flags (`enable_copy_paste_restriction`, `count_copy_paste_violations`, `require_fullscreen`, `count_fullscreen_exit_violations`, `count_tab_switch_violations`, `count_dev_tools_violations`, `enable_proctoring_warnings`) to `quiz_versions`.
+  - Added `proctoring_deduction` (Numeric 5,2, default 0.00), `violation_count` (Integer, default 0), and check constraints `ck_quiz_attempt_deduction` and `ck_quiz_attempt_violation_count` to `quiz_attempts`.
+  - Added `client_event_id` (String 64, indexed) to `attempt_telemetry_events`.
+  - Verified offline SQL generation (`alembic upgrade head --sql`) and model constraints in `test_models.py`.
+- **Action**: Authoritative Scoring & Telemetry Backend
+  - Implemented configurable penalty calculation:
+    $$\text{chargeable\_violations} = \max(0, V - F)$$
+    $$\text{proctoring\_deduction} = \min(\text{chargeable\_violations} \times D, C, \max(0, S))$$
+    $$\text{final\_score} = \max(0, S - \text{proctoring\_deduction})$$
+    with zero-floor guarantee and half-mark precision.
+  - Implemented idempotent telemetry recording with `client_event_id` and paired blur/switch deduplication (within 1000ms window).
+  - Enforced policy toggles: copy/paste, fullscreen exit, and devtools count only when explicitly enabled by attempt's frozen policy snapshot.
+  - Rejected unsupported, forged, or deceptive signals (e.g. fake screenshot events).
+  - Added `GET /api/v1/student/quizzes/{id}/readiness` endpoint disclosing all effective rules and readiness pre-conditions.
+- **Action**: Pre-Quiz Readiness Screen & Active Assessment Controls
+  - Created `AssessmentReadinessModal.tsx` in frontend: displays quiz title, instructions, time limits, backtracking rules, proctoring breakdown, browser checks, Fullscreen API support, and explicit student confirmation before beginning attempt.
+  - Updated `ActiveAssessment.tsx`: scoped clipboard interception (`copy`, `cut`, `paste`, `contextmenu`), DevTools shortcut intercept (F12, Ctrl/Cmd+Shift+I), fullscreen enforcement listener with top exit alert banner and re-entry button, and live violation status badge in header.
+- **Action**: Teacher QuizBuilder & Results Diagnostics
+  - Added "Proctoring & Academic Integrity" settings card in `QuizBuilder.tsx` with penalty rules (free allowance, deduction rate, cumulative cap) and granular event toggles.
+  - Updated `QuizResults.tsx` attempts table to display violations count and proctoring deductions.
+  - Enhanced Attempt Detail Modal "Telemetry & Proctoring" tab with summary KPI card, effective policy snapshot, detected breakdown chips, and timestamped event log with client IDs.
+- **Action**: Automated Testing & Validation
+  - Created `backend/tests/test_proctoring_hardening.py` with 10 comprehensive tests covering boundaries, half-marks, caps, idempotency, blur/switch deduplication, cross-student telemetry isolation, readiness checks, and teacher diagnostics view.
+  - Full backend pytest suite: **137 passed in 6.08s**.
+  - Frontend linter (`oxlint`): **0 errors across 43 files**.
+  - Frontend production build (`tsc -b && vite build`): **passed with 0 errors in 1.07s**.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -616,6 +647,11 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank -> 0004_question_difficulty -> 0005_assignment_lifecycle -> 0006_attempt_shuffling (head)`. |
 | `alembic -c backend/alembic.ini upgrade 0005_assignment_lifecycle:0006_attempt_shuffling --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for attempt shuffling columns, client timestamp, and student status index. |
 | `alembic -c backend/alembic.ini downgrade 0006_attempt_shuffling:0005_assignment_lifecycle --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0006. |
+| `alembic -c backend/alembic.ini upgrade 0006_attempt_shuffling:0007_proctoring_hardening --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline DDL for proctoring columns on `quiz_versions`, `quiz_attempts`, and `attempt_telemetry_events`. |
+| `alembic -c backend/alembic.ini downgrade 0007_proctoring_hardening:0006_attempt_shuffling --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0007. |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `137 passed in 6.08s` (all 127 prior tests + 10 dedicated proctoring hardening tests passing). |
+| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 43 files. |
+| `npm run build` (`tsc -b && vite build`) | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite production build passed in 1.07s. |
 
 ---
 
@@ -631,14 +667,14 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API, Assessment API, Teacher Results API)**:
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API, Assessment API, Teacher Results API, Proctoring Hardening)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `127 passed in 6.11s`.
+  - Results: `137 passed in 6.08s`.
 - **Frontend Linter & Production Build Verification**:
-  - Executed: `npm run lint` (oxlint): 0 errors across 42 files.
-  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2014 modules transformed in 885ms.
+  - Executed: `npm run lint` (oxlint): 0 errors across 43 files.
+  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2015 modules transformed in 1.07s.
 - **Alembic Offline Migration Checks**:
-  - Verified `upgrade 0005_assignment_lifecycle:0006_attempt_shuffling --sql` and `downgrade 0006_attempt_shuffling:0005_assignment_lifecycle --sql`. Validated migration chain 0001 -> 0006.
+  - Verified `upgrade 0006_attempt_shuffling:0007_proctoring_hardening --sql` and `downgrade 0007_proctoring_hardening:0006_attempt_shuffling --sql`. Validated migration chain 0001 -> 0007.
 
 ---
 
@@ -648,7 +684,8 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 1. **Question Bank Isolation via Deep Copy**: Reusable bank questions are cloned with their options when added to a quiz version. Bank updates do not propagate to quizzes, preserving historical assessment integrity.
 2. **Published Quiz Mutability**: Modifying settings or questions on a published quiz automatically branches a new draft `QuizVersion`, leaving previous versions and student attempts attached to their original frozen snapshot.
 3. **Additive Roster Re-Imports**: Re-importing a roster updates student details (name, division) without silently removing unlisted students. Deletions require explicit removal in the teacher UI, which is blocked if historical attempts exist.
-4. **Concurrent Exam Load Capacity**: Actual synchronized 50+ student exam load testing is reserved for Phase 8 against a deployed PostgreSQL environment.
+4. **Browser-Based Proctoring Boundaries**: Browser APIs (fullscreen, visibility, blur, clipboard events) provide deterrents and factual audit telemetry. Web applications cannot inspect the student's operating system, block external physical devices, or claim reliable screenshot detection. All detected events are factual signals, not conclusive proof of academic dishonesty.
+5. **Concurrent Exam Load Capacity**: Actual synchronized 50+ student exam load testing is reserved for Phase 8 against a deployed PostgreSQL environment.
 
 ### Unresolved Questions / Future Confirmations:
 - Live Supabase project credentials to be provided in `.env.local` and `.env` prior to staging deployment.
@@ -656,7 +693,7 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All changes strictly adhere to DEC-001 through DEC-020.
+- **None**: All changes strictly adhere to DEC-001 through DEC-021.
 
 ---
 

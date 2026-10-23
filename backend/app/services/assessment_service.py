@@ -27,6 +27,7 @@ from app.schemas.assessment import (
     SanitizedQuestionResponse,
     SavedAnswerResponse,
     AttemptContentResponse,
+    AssessmentReadinessResponse,
     AnswerSaveRequest,
     AnswerSaveResponse,
     TelemetryEventRequest,
@@ -135,6 +136,68 @@ def list_student_quizzes(db: Session, student_user: User) -> List[StudentQuizSum
         )
 
     return results
+
+
+def get_assessment_readiness(
+    db: Session,
+    quiz_id: uuid.UUID,
+    student_user: User,
+) -> AssessmentReadinessResponse:
+    """
+    Retrieve pre-quiz assessment instructions, browser prerequisites, and proctoring policy snapshot (DEC-021).
+    - Authoritative server-side verification: student enrollment, published version, and time window.
+    - Guarantees transparency: student sees full policy and warnings before starting/consuming attempt.
+    """
+    eligibility = check_student_quiz_eligibility(db, quiz_id, student_user)
+
+    version = db.scalar(
+        select(QuizVersion).where(QuizVersion.id == eligibility.quiz_version_id)
+    )
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment version definition not found.",
+        )
+
+    # Check attempts taken and active attempt
+    attempts = db.scalars(
+        select(QuizAttempt).where(
+            QuizAttempt.quiz_version_id == version.id,
+            QuizAttempt.student_id == student_user.id,
+        )
+    ).all()
+
+    attempts_taken = len([a for a in attempts if a.status in (AttemptStatus.SUBMITTED, AttemptStatus.EXPIRED)])
+    active_att = next((a for a in attempts if a.status == AttemptStatus.IN_PROGRESS), None)
+
+    can_start = eligibility.is_eligible and (active_att is not None or attempts_taken < version.max_attempts)
+
+    return AssessmentReadinessResponse(
+        quiz_id=eligibility.quiz_id,
+        quiz_title=eligibility.quiz_title,
+        course_code=eligibility.course_code,
+        description=version.description,
+        opens_at=ensure_utc(eligibility.opens_at),
+        closes_at=ensure_utc(eligibility.closes_at),
+        duration_minutes=eligibility.duration_minutes,
+        max_attempts=eligibility.max_attempts,
+        attempts_taken=attempts_taken,
+        allow_backtracking=version.allow_backtracking,
+        free_violation_allowance=version.tab_switch_limit,
+        violation_penalty_marks=float(version.tab_switch_penalty_marks),
+        max_proctoring_deduction=float(version.max_proctoring_deduction) if version.max_proctoring_deduction is not None else 5.00,
+        enable_copy_paste_restriction=version.enable_copy_paste_restriction,
+        count_copy_paste_violations=version.count_copy_paste_violations,
+        require_fullscreen=version.require_fullscreen,
+        count_fullscreen_exit_violations=version.count_fullscreen_exit_violations,
+        count_tab_switch_violations=version.count_tab_switch_violations,
+        count_dev_tools_violations=version.count_dev_tools_violations,
+        enable_proctoring_warnings=version.enable_proctoring_warnings,
+        has_active_attempt=active_att is not None,
+        active_attempt_id=active_att.id if active_att else None,
+        can_start=can_start,
+        status_message=eligibility.status_message,
+    )
 
 
 def start_or_resume_attempt(
@@ -439,6 +502,18 @@ def get_attempt_content(
         is_finalized=attempt.is_finalized,
         tab_switch_count=attempt.tab_switch_count,
         tab_switch_limit=version.tab_switch_limit,
+        violation_count=attempt.violation_count,
+        free_violation_allowance=version.tab_switch_limit,
+        violation_penalty_marks=float(version.tab_switch_penalty_marks),
+        max_proctoring_deduction=float(version.max_proctoring_deduction) if version.max_proctoring_deduction is not None else 5.00,
+        current_proctoring_deduction=float(attempt.proctoring_deduction) if attempt.proctoring_deduction is not None else 0.00,
+        enable_copy_paste_restriction=version.enable_copy_paste_restriction,
+        count_copy_paste_violations=version.count_copy_paste_violations,
+        require_fullscreen=version.require_fullscreen,
+        count_fullscreen_exit_violations=version.count_fullscreen_exit_violations,
+        count_tab_switch_violations=version.count_tab_switch_violations,
+        count_dev_tools_violations=version.count_dev_tools_violations,
+        enable_proctoring_warnings=version.enable_proctoring_warnings,
         allow_backtracking=version.allow_backtracking,
         questions=sanitized_questions,
     )
@@ -570,6 +645,15 @@ def save_attempt_answer(
     )
 
 
+VALID_TELEMETRY_TYPES = {
+    "tab_switch",
+    "window_blur",
+    "fullscreen_exit",
+    "copy_paste_attempt",
+    "dev_tools_shortcut",
+}
+
+
 def record_telemetry_event(
     db: Session,
     attempt_id: uuid.UUID,
@@ -577,8 +661,12 @@ def record_telemetry_event(
     student_user: User,
 ) -> TelemetryEventResponse:
     """
-    Record client proctoring observation (tab switch or focus loss).
-    Increments tab_switch_count and returns threshold status.
+    Record client proctoring observation with idempotency, deduplication, and policy enforcement (DEC-021).
+    - Rejects invalid/unsupported event types.
+    - Idempotent via client_event_id: retries return current state without double-counting.
+    - Deduplicates related window_blur and tab_switch events occurring within 1000ms.
+    - Respects teacher-configured proctoring policy flags for violation accounting.
+    - Server-authoritative calculation of remaining free violations and estimated deductions.
     """
     attempt = db.scalar(
         select(QuizAttempt)
@@ -592,31 +680,141 @@ def record_telemetry_event(
         )
 
     version = attempt.quiz_version
+    event_type = payload.event_type.strip()[:64]
+    if event_type not in VALID_TELEMETRY_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported telemetry event type '{event_type}'.",
+        )
 
+    free_allowance = version.tab_switch_limit
+    penalty_rate = float(version.tab_switch_penalty_marks)
+    max_deduction = float(version.max_proctoring_deduction) if version.max_proctoring_deduction is not None else 5.00
+
+    # If attempt is already finalized, return current immutable state
     if attempt.is_finalized or attempt.status != AttemptStatus.IN_PROGRESS:
+        v_count = attempt.violation_count
+        chargeable = max(0, v_count - free_allowance)
+        current_ded = min(chargeable * penalty_rate, max_deduction)
         return TelemetryEventResponse(
             tab_switch_count=attempt.tab_switch_count,
-            limit_exceeded=attempt.tab_switch_count > version.tab_switch_limit,
-            tab_switch_limit=version.tab_switch_limit,
+            violation_count=v_count,
+            free_allowance=free_allowance,
+            remaining_free_violations=max(0, free_allowance - v_count),
+            chargeable_violations=chargeable,
+            current_deduction=round(current_ded, 2),
+            limit_exceeded=v_count > free_allowance,
+            tab_switch_limit=free_allowance,
+            warning_message=None,
         )
 
     now = datetime.now(timezone.utc)
+
+    # 1. Idempotency check via client_event_id
+    client_eid = None
+    if payload.client_event_id:
+        client_eid = payload.client_event_id.strip()[:64]
+        existing_event = db.scalar(
+            select(AttemptTelemetryEvent).where(
+                AttemptTelemetryEvent.attempt_id == attempt.id,
+                AttemptTelemetryEvent.client_event_id == client_eid,
+            )
+        )
+        if existing_event:
+            v_count = attempt.violation_count
+            chargeable = max(0, v_count - free_allowance)
+            current_ded = min(chargeable * penalty_rate, max_deduction)
+            return TelemetryEventResponse(
+                tab_switch_count=attempt.tab_switch_count,
+                violation_count=v_count,
+                free_allowance=free_allowance,
+                remaining_free_violations=max(0, free_allowance - v_count),
+                chargeable_violations=chargeable,
+                current_deduction=round(current_ded, 2),
+                limit_exceeded=v_count > free_allowance,
+                tab_switch_limit=free_allowance,
+                warning_message=None,
+            )
+
+    # 2. Deduplication check: check last telemetry event on this attempt
+    last_event = db.scalar(
+        select(AttemptTelemetryEvent)
+        .where(AttemptTelemetryEvent.attempt_id == attempt.id)
+        .order_by(AttemptTelemetryEvent.event_timestamp.desc())
+        .limit(1)
+    )
+
+    is_deduplicated = False
+    if last_event:
+        last_ts = ensure_utc(last_event.event_timestamp)
+        delta_seconds = abs((now - last_ts).total_seconds()) if last_ts else 999.0
+        # If window_blur and tab_switch occur together within 1000ms for a single incident:
+        if delta_seconds < 1.0 and {last_event.event_type, event_type} == {"window_blur", "tab_switch"}:
+            is_deduplicated = True
+
+    # 3. Policy rule check: determine if event type counts toward violations
+    is_policy_chargeable = False
+    if event_type in ("tab_switch", "window_blur"):
+        is_policy_chargeable = version.count_tab_switch_violations
+    elif event_type == "fullscreen_exit":
+        is_policy_chargeable = version.count_fullscreen_exit_violations
+    elif event_type == "copy_paste_attempt":
+        is_policy_chargeable = version.count_copy_paste_violations
+    elif event_type == "dev_tools_shortcut":
+        is_policy_chargeable = version.count_dev_tools_violations
+
+    # Record event in audit telemetry log
+    event_meta = dict(payload.event_data or {})
+    event_meta["is_deduplicated"] = is_deduplicated
+    event_meta["is_policy_chargeable"] = is_policy_chargeable
+    if payload.client_timestamp:
+        event_meta["client_timestamp"] = payload.client_timestamp.isoformat()
+
     event = AttemptTelemetryEvent(
         id=uuid.uuid4(),
         attempt_id=attempt.id,
-        event_type=payload.event_type[:64],
+        event_type=event_type,
+        client_event_id=client_eid,
         event_timestamp=now,
-        event_data=payload.event_data,
+        event_data=event_meta,
     )
     db.add(event)
-    attempt.tab_switch_count += 1
+
+    # Increment counters if not deduplicated
+    if not is_deduplicated:
+        if is_policy_chargeable:
+            attempt.violation_count += 1
+        if event_type in ("tab_switch", "window_blur"):
+            attempt.tab_switch_count += 1
+
     db.commit()
     db.refresh(attempt)
 
+    v_count = attempt.violation_count
+    chargeable = max(0, v_count - free_allowance)
+    current_ded = min(chargeable * penalty_rate, max_deduction)
+    remaining_free = max(0, free_allowance - v_count)
+    limit_exceeded = v_count > free_allowance
+
+    warning_msg = None
+    if version.enable_proctoring_warnings:
+        if remaining_free > 0:
+            warning_msg = f"Security event detected ({event_type}). You have {remaining_free} free violation(s) remaining."
+        elif remaining_free == 0 and chargeable == 0:
+            warning_msg = "Your free violation allowance has been exhausted. Further violations will reduce your score."
+        else:
+            warning_msg = f"Violation penalty applied ({chargeable} chargeable incident(s)). Current estimated deduction: {current_ded:.2f} marks."
+
     return TelemetryEventResponse(
         tab_switch_count=attempt.tab_switch_count,
-        limit_exceeded=attempt.tab_switch_count > version.tab_switch_limit,
-        tab_switch_limit=version.tab_switch_limit,
+        violation_count=v_count,
+        free_allowance=free_allowance,
+        remaining_free_violations=remaining_free,
+        chargeable_violations=chargeable,
+        current_deduction=round(current_ded, 2),
+        limit_exceeded=limit_exceeded,
+        tab_switch_limit=free_allowance,
+        warning_message=warning_msg,
     )
 
 
@@ -631,7 +829,7 @@ def finalize_and_grade_attempt(
     - Idempotency: repeated calls return consistent finalized state without re-grading.
     - Evaluates positive marks, negative marks, and multi-answer scoring policies:
       all_or_nothing, partial_with_penalty, and partial_no_penalty.
-    - Evaluates tab switch penalties if configured.
+    - Evaluates proctoring deduction with policy caps and boundaries (DEC-021).
     - Gated result release: student receives score breakdown only if results are released.
     """
     version = db.scalar(
@@ -647,7 +845,7 @@ def finalize_and_grade_attempt(
             detail="Assessment version definition not found for grading.",
         )
 
-    # Idempotent check
+    # Idempotent check: if already finalized, return stored score
     if attempt.is_finalized:
         return AttemptSubmissionResponse(
             attempt_id=attempt.id,
@@ -730,16 +928,25 @@ def finalize_and_grade_attempt(
 
         raw_total_score += q_score
 
-    # Tab switch penalty (DEC-008, DEC-009)
-    tab_limit = version.tab_switch_limit
-    tab_penalty_rate = float(version.tab_switch_penalty_marks)
-    tab_penalty = 0.0
+    # Configurable Proctoring Penalty Calculation (DEC-008, DEC-009, DEC-021)
+    # V = total chargeable violations
+    # F = configured free violation allowance
+    # D = configured deduction per chargeable violation
+    # C = configured maximum cumulative proctoring deduction
+    # S = raw score before proctoring deduction
+    V = attempt.violation_count
+    F = version.tab_switch_limit
+    D = float(version.tab_switch_penalty_marks)
+    C = float(version.max_proctoring_deduction) if version.max_proctoring_deduction is not None else 5.00
+    S = raw_total_score
 
-    if attempt.tab_switch_count > tab_limit and tab_penalty_rate > 0.0:
-        excess_switches = attempt.tab_switch_count - tab_limit
-        tab_penalty = excess_switches * tab_penalty_rate
+    chargeable_violations = max(0, V - F)
+    # proctoring_deduction = min(chargeable_violations * D, C, max(0, S))
+    calculated_deduction = chargeable_violations * D
+    proctoring_deduction = min(calculated_deduction, C, max(0.0, S))
 
-    final_score = max(0.0, round(raw_total_score - tab_penalty, 2))
+    final_score = max(0.0, round(S - proctoring_deduction, 2))
+    attempt.proctoring_deduction = round(proctoring_deduction, 2)
     attempt.total_score = final_score
     attempt.grading_status = GradingStatus.AUTO_GRADED
 
@@ -753,7 +960,12 @@ def finalize_and_grade_attempt(
         details={
             "status": attempt.status.value,
             "raw_total": raw_total_score,
-            "tab_penalty": tab_penalty,
+            "total_violations": V,
+            "free_allowance": F,
+            "chargeable_violations": chargeable_violations,
+            "deduction_rate": D,
+            "max_cap": C,
+            "proctoring_deduction": attempt.proctoring_deduction,
             "final_score": final_score,
             "is_expired": is_expired,
         },

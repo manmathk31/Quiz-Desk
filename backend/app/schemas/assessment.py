@@ -95,8 +95,50 @@ class AttemptContentResponse(BaseModel):
     is_finalized: bool
     tab_switch_count: int
     tab_switch_limit: int
+    violation_count: int = 0
+    free_violation_allowance: int = 2
+    violation_penalty_marks: float = 1.00
+    max_proctoring_deduction: float = 5.00
+    current_proctoring_deduction: float = 0.00
+    enable_copy_paste_restriction: bool = True
+    count_copy_paste_violations: bool = True
+    require_fullscreen: bool = True
+    count_fullscreen_exit_violations: bool = True
+    count_tab_switch_violations: bool = True
+    count_dev_tools_violations: bool = True
+    enable_proctoring_warnings: bool = True
     allow_backtracking: bool
     questions: List[SanitizedQuestionResponse]
+
+
+class AssessmentReadinessResponse(BaseModel):
+    """Pre-quiz assessment instructions, browser prerequisites, and proctoring policy."""
+    model_config = ConfigDict(from_attributes=True)
+
+    quiz_id: uuid.UUID
+    quiz_title: str
+    course_code: str
+    description: Optional[str] = None
+    opens_at: datetime
+    closes_at: datetime
+    duration_minutes: int
+    max_attempts: int
+    attempts_taken: int
+    allow_backtracking: bool
+    free_violation_allowance: int
+    violation_penalty_marks: float
+    max_proctoring_deduction: float
+    enable_copy_paste_restriction: bool
+    count_copy_paste_violations: bool
+    require_fullscreen: bool
+    count_fullscreen_exit_violations: bool
+    count_tab_switch_violations: bool
+    count_dev_tools_violations: bool
+    enable_proctoring_warnings: bool
+    has_active_attempt: bool
+    active_attempt_id: Optional[uuid.UUID] = None
+    can_start: bool
+    status_message: str
 
 
 class AnswerSaveRequest(BaseModel):
@@ -115,16 +157,24 @@ class AnswerSaveResponse(BaseModel):
 
 
 class TelemetryEventRequest(BaseModel):
-    """Client proctoring observation event (e.g. tab switch or window blur)."""
+    """Client proctoring observation event (e.g. tab switch, fullscreen exit, copy/paste attempt, dev tools)."""
     event_type: str = Field(default="tab_switch", max_length=64)
+    client_event_id: Optional[str] = Field(None, max_length=64, description="Client idempotency UUID")
+    client_timestamp: Optional[datetime] = None
     event_data: Optional[dict[str, Any]] = None
 
 
 class TelemetryEventResponse(BaseModel):
-    """Acknowledgment and warning threshold status."""
+    """Authoritative proctoring violation acknowledgment and penalty status."""
     tab_switch_count: int
+    violation_count: int
+    free_allowance: int
+    remaining_free_violations: int
+    chargeable_violations: int
+    current_deduction: float
     limit_exceeded: bool
     tab_switch_limit: int
+    warning_message: Optional[str] = None
 
 
 class AttemptSubmissionResponse(BaseModel):

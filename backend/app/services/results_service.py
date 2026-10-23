@@ -211,6 +211,8 @@ def get_quiz_attempts_paginated(
                 total_score=float(att.total_score) if att.total_score is not None else None,
                 grading_status=att.grading_status.value,
                 tab_switch_count=att.tab_switch_count,
+                violation_count=att.violation_count,
+                proctoring_deduction=float(att.proctoring_deduction) if att.proctoring_deduction is not None else 0.0,
                 is_finalized=att.is_finalized,
                 adjustment_count=len(att.grade_adjustments),
             )
@@ -333,11 +335,30 @@ def get_attempt_detail_for_teacher(
         TelemetryEventItem(
             id=t.id,
             event_type=t.event_type,
+            client_event_id=t.client_event_id,
             event_timestamp=ensure_utc(t.event_timestamp),
             event_data=t.event_data,
         )
         for t in sorted(attempt.telemetry_events, key=lambda t: t.event_timestamp)
     ]
+
+    # Violation counts by event type
+    violation_breakdown: Dict[str, int] = {}
+    for t in attempt.telemetry_events:
+        violation_breakdown[t.event_type] = violation_breakdown.get(t.event_type, 0) + 1
+
+    effective_policy = {
+        "free_violation_allowance": version.tab_switch_limit,
+        "violation_penalty_marks": float(version.tab_switch_penalty_marks),
+        "max_proctoring_deduction": float(version.max_proctoring_deduction) if version.max_proctoring_deduction is not None else 5.0,
+        "enable_copy_paste_restriction": version.enable_copy_paste_restriction,
+        "count_copy_paste_violations": version.count_copy_paste_violations,
+        "require_fullscreen": version.require_fullscreen,
+        "count_fullscreen_exit_violations": version.count_fullscreen_exit_violations,
+        "count_tab_switch_violations": version.count_tab_switch_violations,
+        "count_dev_tools_violations": version.count_dev_tools_violations,
+        "enable_proctoring_warnings": version.enable_proctoring_warnings,
+    }
 
     return AttemptDetailResponse(
         attempt_id=attempt.id,
@@ -358,6 +379,10 @@ def get_attempt_detail_for_teacher(
         max_possible_marks=round(max_marks, 2),
         grading_status=attempt.grading_status.value,
         tab_switch_count=attempt.tab_switch_count,
+        violation_count=attempt.violation_count,
+        proctoring_deduction=float(attempt.proctoring_deduction) if attempt.proctoring_deduction is not None else 0.0,
+        effective_policy=effective_policy,
+        violation_breakdown=violation_breakdown,
         is_finalized=attempt.is_finalized,
         questions=question_details,
         adjustments=adjustments,
@@ -673,6 +698,8 @@ def get_student_attempt_result(
         started_at=ensure_utc(attempt.started_at),
         submitted_at=ensure_utc(attempt.submitted_at),
         total_score=float(attempt.total_score) if attempt.total_score is not None else 0.0,
+        proctoring_deduction=float(attempt.proctoring_deduction) if attempt.proctoring_deduction is not None else 0.0,
+        violation_count=attempt.violation_count,
         max_possible_score=round(max_possible, 2),
         grading_status=attempt.grading_status.value,
         tab_switch_count=attempt.tab_switch_count,

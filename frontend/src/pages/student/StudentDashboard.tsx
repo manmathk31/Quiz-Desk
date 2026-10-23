@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react'
+import { AssessmentReadinessModal } from './AssessmentReadinessModal'
 
 export const StudentDashboard: React.FC = () => {
   const { session, profile } = useAuth()
@@ -24,6 +25,7 @@ export const StudentDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [startingQuizId, setStartingQuizId] = useState<string | null>(null)
+  const [selectedQuizForReadiness, setSelectedQuizForReadiness] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
 
   const loadQuizzes = useCallback(async () => {
@@ -44,15 +46,17 @@ export const StudentDashboard: React.FC = () => {
     loadQuizzes()
   }, [loadQuizzes])
 
-  const handleStartOrResume = async (quizId: string) => {
-    if (!token) return
-    setStartingQuizId(quizId)
+  const handleConfirmStartFromModal = async () => {
+    if (!token || !selectedQuizForReadiness) return
+    setStartingQuizId(selectedQuizForReadiness)
     setError(null)
     try {
-      const res = await startOrResumeAttempt(token, quizId)
+      const res = await startOrResumeAttempt(token, selectedQuizForReadiness)
+      setSelectedQuizForReadiness(null)
       navigate(`/student/assessments/${res.attempt_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start or resume assessment.')
+      throw err
     } finally {
       setStartingQuizId(null)
     }
@@ -247,21 +251,21 @@ export const StudentDashboard: React.FC = () => {
 
                   {hasActiveAttempt ? (
                     <button
-                      onClick={() => handleStartOrResume(quiz.quiz_id)}
+                      onClick={() => setSelectedQuizForReadiness(quiz.quiz_id)}
                       disabled={startingQuizId === quiz.quiz_id}
-                      className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center space-x-1.5 transition-colors shadow-sm disabled:opacity-50"
+                      className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center space-x-1.5 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
                     >
                       <PlayCircle className="w-3.5 h-3.5" />
                       <span>Resume Attempt</span>
                     </button>
                   ) : canStart ? (
                     <button
-                      onClick={() => handleStartOrResume(quiz.quiz_id)}
+                      onClick={() => setSelectedQuizForReadiness(quiz.quiz_id)}
                       disabled={startingQuizId === quiz.quiz_id}
-                      className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center space-x-1.5 transition-colors shadow-sm disabled:opacity-50"
+                      className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center space-x-1.5 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
                     >
                       <PlayCircle className="w-3.5 h-3.5" />
-                      <span>Start Assessment</span>
+                      <span>Review Rules & Start</span>
                     </button>
                   ) : (
                     <button
@@ -276,6 +280,17 @@ export const StudentDashboard: React.FC = () => {
             )
           })}
         </div>
+      )}
+
+      {/* Pre-Quiz Readiness Modal */}
+      {selectedQuizForReadiness && (
+        <AssessmentReadinessModal
+          quizId={selectedQuizForReadiness}
+          token={token}
+          isOpen={!!selectedQuizForReadiness}
+          onClose={() => setSelectedQuizForReadiness(null)}
+          onConfirmStart={handleConfirmStartFromModal}
+        />
       )}
     </div>
   )

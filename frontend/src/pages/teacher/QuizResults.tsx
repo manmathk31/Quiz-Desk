@@ -16,6 +16,7 @@ import {
   X,
   History,
   ShieldAlert,
+  Shield,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -428,7 +429,7 @@ export const QuizResults: React.FC = () => {
                   <th className="py-3 px-4">Started / Submitted</th>
                   <th className="py-3 px-4">Score</th>
                   <th className="py-3 px-4">Grading</th>
-                  <th className="py-3 px-4 text-center">Tab Switches</th>
+                  <th className="py-3 px-4 text-center">Violations & Deduction</th>
                   <th className="py-3 px-4 text-right">Action</th>
                 </tr>
               </thead>
@@ -489,19 +490,24 @@ export const QuizResults: React.FC = () => {
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      {att.tab_switch_count > 0 ? (
+                      <div className="inline-flex flex-col items-center">
                         <span
-                          className={`font-semibold px-1.5 py-0.5 rounded text-[11px] ${
-                            att.tab_switch_count > 2
+                          className={`font-semibold px-2 py-0.5 rounded text-[11px] ${
+                            (att.violation_count ?? att.tab_switch_count) > 2
                               ? 'bg-red-100 text-red-800'
-                              : 'bg-amber-100 text-amber-800'
+                              : (att.violation_count ?? att.tab_switch_count) > 0
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-100 text-slate-500'
                           }`}
                         >
-                          {att.tab_switch_count}
+                          {att.violation_count ?? att.tab_switch_count} violations
                         </span>
-                      ) : (
-                        <span className="text-slate-400">0</span>
-                      )}
+                        {Number(att.proctoring_deduction ?? 0) > 0 && (
+                          <span className="text-[10px] text-red-600 font-bold mt-0.5">
+                            -{Number(att.proctoring_deduction).toFixed(2)} pts
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button
@@ -739,30 +745,105 @@ export const QuizResults: React.FC = () => {
 
                   {/* Tab 2: Proctoring Telemetry */}
                   {activeTab === 'telemetry' && (
-                    <div className="space-y-3">
-                      {attemptDetail.telemetry_events.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-slate-400">
-                          <CheckCircle2 className="w-6 h-6 mx-auto mb-1 text-emerald-500" />
-                          Zero tab-switch or focus loss events recorded during this attempt.
-                        </div>
-                      ) : (
-                        attemptDetail.telemetry_events.map((t) => (
-                          <div
-                            key={t.id}
-                            className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl text-xs flex items-center justify-between"
-                          >
-                            <div className="flex items-center space-x-2">
-                              <ShieldAlert className="w-4 h-4 text-amber-600" />
-                              <span className="font-semibold text-slate-800 uppercase text-[11px]">
-                                {t.event_type}
-                              </span>
-                            </div>
-                            <span className="text-slate-500 font-mono text-[11px]">
-                              {new Date(t.event_timestamp).toLocaleTimeString()}
+                    <div className="space-y-4">
+                      {/* Proctoring Policy & Summary Card */}
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                          <div className="flex items-center space-x-2">
+                            <Shield className="w-4 h-4 text-blue-600" />
+                            <span className="font-bold text-slate-800 text-xs">
+                              Proctoring Summary & Policy Snapshot
                             </span>
                           </div>
-                        ))
-                      )}
+                          <span className="text-[11px] font-mono text-slate-500">
+                            Version {attemptDetail.effective_policy?.version_number ?? 1}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                          <div className="p-2 bg-white border border-slate-200 rounded-lg">
+                            <div className="text-base font-bold text-slate-900">
+                              {attemptDetail.violation_count ?? attemptDetail.tab_switch_count}
+                            </div>
+                            <div className="text-[10px] text-slate-500 uppercase font-semibold">Accepted Violations</div>
+                          </div>
+                          <div className="p-2 bg-white border border-slate-200 rounded-lg">
+                            <div className="text-base font-bold text-blue-600">
+                              {attemptDetail.effective_policy?.free_allowance ?? 2}
+                            </div>
+                            <div className="text-[10px] text-slate-500 uppercase font-semibold">Free Allowance</div>
+                          </div>
+                          <div className="p-2 bg-white border border-slate-200 rounded-lg">
+                            <div className="text-base font-bold text-red-600">
+                              -{Number(attemptDetail.proctoring_deduction ?? 0).toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-slate-500 uppercase font-semibold">Deduction Applied</div>
+                          </div>
+                        </div>
+
+                        {/* Breakdown Chips */}
+                        {attemptDetail.violation_breakdown && Object.keys(attemptDetail.violation_breakdown).length > 0 && (
+                          <div className="pt-2 border-t border-slate-200 flex flex-wrap gap-2 items-center">
+                            <span className="text-[11px] font-semibold text-slate-600">Detected Breakdown:</span>
+                            {Object.entries(attemptDetail.violation_breakdown).map(([type, count]) => (
+                              <span
+                                key={type}
+                                className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200"
+                              >
+                                {type.replace(/_/g, ' ')}: {count}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {attemptDetail.effective_policy && (
+                          <div className="text-[11px] text-slate-500 leading-relaxed bg-white p-2.5 rounded border border-slate-200 space-y-1">
+                            <div>
+                              <strong>Penalty Formula:</strong> max(0, V - {attemptDetail.effective_policy.free_allowance}) × {Number(attemptDetail.effective_policy.deduction_per_violation).toFixed(2)} pts (capped at {Number(attemptDetail.effective_policy.max_deduction).toFixed(2)} pts)
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              Enforced: Fullscreen ({attemptDetail.effective_policy.require_fullscreen ? 'Yes' : 'No'}), Copy/Paste Restriction ({attemptDetail.effective_policy.enable_copy_paste_restriction ? 'Yes' : 'No'}), DevTools Intercept ({attemptDetail.effective_policy.count_dev_tools_violations ? 'Yes' : 'No'})
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Timestamped Telemetry Event Log */}
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Timestamped Event Log ({attemptDetail.telemetry_events.length})
+                        </h4>
+                        {attemptDetail.telemetry_events.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
+                            <CheckCircle2 className="w-5 h-5 mx-auto mb-1 text-emerald-500" />
+                            Zero suspicious browser events recorded during this attempt.
+                          </div>
+                        ) : (
+                          attemptDetail.telemetry_events.map((t) => (
+                            <div
+                              key={t.id}
+                              className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl text-xs flex items-center justify-between"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                                <div>
+                                  <span className="font-semibold text-slate-800 uppercase text-[11px] block">
+                                    {t.event_type.replace(/_/g, ' ')}
+                                  </span>
+                                  {t.client_event_id && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      ID: {t.client_event_id.slice(0, 16)}...
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-slate-500 font-mono text-[11px]">
+                                {new Date(t.event_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   )}
 
