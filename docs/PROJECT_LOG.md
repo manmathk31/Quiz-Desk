@@ -1088,14 +1088,15 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 11. Public System Diagnostics, Role-Contextual Header & Sleek Authentication Overhaul (2026-10-24)
 
 ### Execution Summary
-1. **Public Diagnostics Route (`frontend/src/App.tsx`, `frontend/src/pages/Overview.tsx`)**:
-   - Removed `<RequireRole allowedRoles={['admin']}>` protection from `/status` so visitors directly access system diagnostics without bouncing to `/student/login`.
-   - Retained administrative overview at `/admin/overview`.
-   - Enhanced `Overview.tsx` to measure live millisecond round-trip latency (`/health/live`) and PostgreSQL database connectivity (`/health/ready`).
-   - Added live subsystem telemetry cards for API Gateway, Database, Supabase Auth, and Cloudflare Pages CDN.
+1. **Admin-Guarded Diagnostics (`frontend/src/App.tsx`, `frontend/src/pages/Overview.tsx`)**:
+   - Re-bound `/status` to `<RequireRole allowedRoles={['admin']}>`.
+   - Unauthenticated visitors hitting `/status` are redirected straight to `/student/login` via `/login`.
+   - Non-administrators receive HTTP 403 Access Restricted.
+   - Preserved all live latency and subsystem diagnostics inside `Overview.tsx` for verified administrators.
 2. **Complete Abstraction of Faculty Portal Links (`Header.tsx`, `StudentLogin.tsx`, `Footer.tsx`, `AdminLogin.tsx`)**:
    - Re-enforced strict isolation: **ZERO public or student-visible links to the faculty portal**.
    - Removed "Faculty Portal" from Header navigation, mobile menu, Student Login card, and Footer.
+   - Kept Faculty Portal link strictly on private `/admin/login` for administrative governance.
    - Header button is cleanly suppressed on `/student/login`, `/teacher/*`, and `/admin/*`.
    - Public pages only display "Take Assessment" pointing to student entrance.
 3. **Modern, Sleek Authentication Redesign (`StudentLogin`, `TeacherLogin`, `AdminLogin`, `TeacherForgotPassword`, `TeacherResetPassword`)**:
@@ -1106,7 +1107,7 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - High-contrast gradient action buttons with loading spinners (`Loader2`).
 4. **Verification**:
    - Backend pytest suite: 173 passed in 13.19s.
-   - Frontend build: `tsc -b && vite build` built in 824ms with 0 errors.
+   - Frontend build: `tsc -b && vite build` built in 807ms with 0 errors.
 
 
 
