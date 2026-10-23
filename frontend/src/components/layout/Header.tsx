@@ -9,23 +9,23 @@ export const Header: React.FC = () => {
   const { session, user, role, signOut } = useAuth()
 
   const navLinks = [
-    { label: 'Overview', path: '/' },
-    { label: 'System Status', path: '/status' },
     ...(session && role === 'student'
-      ? [{ label: 'Student Portal', path: '/student/portal' }]
+      ? [{ label: 'My Assessments', path: '/student/portal' }]
       : []),
-    ...(session && (role === 'teacher' || role === 'admin')
+    ...(session && role === 'teacher'
       ? [
-          { label: 'Teacher Portal', path: '/teacher/portal' },
           { label: 'Quizzes', path: '/teacher/quizzes' },
           { label: 'Question Bank', path: '/teacher/question-bank' },
         ]
       : []),
     ...(session && role === 'admin'
-      ? [{ label: 'Admin Portal', path: '/admin/dashboard' }]
+      ? [
+          { label: 'Admin Dashboard', path: '/admin/dashboard' },
+          { label: 'System Diagnostics', path: '/status' },
+          { label: 'Architecture Overview', path: '/admin/overview' },
+        ]
       : []),
   ]
-
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-50">
@@ -66,12 +66,14 @@ export const Header: React.FC = () => {
             })}
           </nav>
 
-          {/* Right Section: System Indicator, Auth Status & Actions */}
+          {/* Right Section: Auth Status & Role-Segregated Actions */}
           <div className="hidden md:flex items-center space-x-3">
-            <div className="flex items-center space-x-2 px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded text-xs text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span className="font-mono text-[11px]">API: Online</span>
-            </div>
+            {role === 'admin' && (
+              <div className="flex items-center space-x-2 px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded text-xs text-slate-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span className="font-mono text-[11px]">API: Online</span>
+              </div>
+            )}
 
             {session && user ? (
               <div className="flex items-center space-x-2.5 pl-2 border-l border-slate-800">
@@ -95,13 +97,21 @@ export const Header: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <Link
-                to="/login"
-                className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium transition-colors"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In</span>
-              </Link>
+              <div className="flex items-center space-x-3">
+                <Link
+                  to="/student/login"
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium transition-colors shadow-sm"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Student Sign In</span>
+                </Link>
+                <Link
+                  to="/teacher/login"
+                  className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  Faculty Portal
+                </Link>
+              </div>
             )}
           </div>
 
@@ -139,7 +149,7 @@ export const Header: React.FC = () => {
               </Link>
             )
           })}
-          <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+          <div className="pt-3 border-t border-slate-800">
             {session && user ? (
               <div className="flex items-center justify-between w-full">
                 <span className="text-xs font-mono text-slate-300 truncate max-w-[180px]">{user.email}</span>
@@ -156,14 +166,23 @@ export const Header: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <Link
-                to="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-1.5 text-xs text-blue-400 font-medium"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In to Quizdesk</span>
-              </Link>
+              <div className="flex flex-col space-y-2 pt-1">
+                <Link
+                  to="/student/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center space-x-1.5 py-2 px-3 bg-blue-600 text-white rounded text-xs font-medium"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Student Sign In</span>
+                </Link>
+                <Link
+                  to="/teacher/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-center py-2 px-3 text-xs text-slate-300 hover:text-white"
+                >
+                  Faculty Sign In
+                </Link>
+              </div>
             )}
           </div>
         </div>

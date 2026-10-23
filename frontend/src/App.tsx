@@ -1,11 +1,10 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { Shell } from './components/layout/Shell'
 import { Home } from './pages/Home'
 import { Overview } from './pages/Overview'
 import { NotFound } from './pages/NotFound'
-import { Login } from './pages/Login'
 import { Unauthorized } from './pages/Unauthorized'
 import { RequireRole } from './components/auth/RequireRole'
 import { StudentDashboard } from './pages/student/StudentDashboard'
@@ -24,22 +23,76 @@ import { TeacherResetPassword } from './pages/auth/TeacherResetPassword'
 import { AdminLogin } from './pages/auth/AdminLogin'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 
+/**
+ * Intelligent gateway for the root URL:
+ * - Redirects authenticated students directly to their assessment dashboard.
+ * - Redirects teachers directly to their quiz management list.
+ * - Redirects administrators directly to the operational admin dashboard.
+ * - Directs unauthenticated visitors to the primary student examination entrance.
+ */
+const RootGateway: React.FC = () => {
+  const { session, role, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <Navigate to="/student/login" replace />
+  }
+
+  if (role === 'student') {
+    return <Navigate to="/student/portal" replace />
+  }
+
+  if (role === 'teacher') {
+    return <Navigate to="/teacher/quizzes" replace />
+  }
+
+  if (role === 'admin') {
+    return <Navigate to="/admin/dashboard" replace />
+  }
+
+  return <Navigate to="/student/login" replace />
+}
+
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Shell>
           <Routes>
-            {/* Public Institutional Information & Portal Entry Routes */}
-            <Route path="/" element={<Home />} />
-            <Route path="/status" element={<Overview />} />
-            <Route path="/login" element={<Login />} />
+            {/* Intelligent Root Gateway & Role-Segregated Entry Routes */}
+            <Route path="/" element={<RootGateway />} />
+            <Route path="/login" element={<Navigate to="/student/login" replace />} />
             <Route path="/student/login" element={<StudentLogin />} />
             <Route path="/teacher/login" element={<TeacherLogin />} />
             <Route path="/teacher/forgot-password" element={<TeacherForgotPassword />} />
             <Route path="/teacher/reset-password" element={<TeacherResetPassword />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
+
+            {/* Protected Technical & System Diagnostics Routes (Administrator Only) */}
+            <Route
+              path="/status"
+              element={
+                <RequireRole allowedRoles={['admin']}>
+                  <Overview />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/admin/overview"
+              element={
+                <RequireRole allowedRoles={['admin']}>
+                  <Home />
+                </RequireRole>
+              }
+            />
 
             {/* Student Role-Protected Routes */}
             <Route

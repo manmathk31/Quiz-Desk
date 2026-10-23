@@ -1,5 +1,5 @@
 import React from 'react'
-import { Shield, Server } from 'lucide-react'
+import { Shield } from 'lucide-react'
 
 export const Footer: React.FC = () => {
   return (
@@ -13,13 +13,10 @@ export const Footer: React.FC = () => {
             <span className="text-xs text-slate-400">Institutional Governance & Exam Delivery</span>
           </div>
 
-          <div className="flex items-center space-x-4 text-xs">
-            <span className="flex items-center gap-1.5 text-slate-400">
-              <Server className="w-3.5 h-3.5 text-emerald-400" />
-              FastAPI Modular Monolith
-            </span>
-            <span className="text-slate-700">|</span>
-            <span className="font-mono text-slate-500">v0.1.0-alpha</span>
+          <div className="flex items-center space-x-4 text-xs text-slate-500">
+            <span>MIT Academy of Engineering</span>
+            <span className="text-slate-700">•</span>
+            <span>Secure Examination Environment</span>
           </div>
         </div>
       </div>
