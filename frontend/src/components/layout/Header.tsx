@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { GraduationCap, Menu, X, User as UserIcon, LogOut, LogIn } from 'lucide-react'
+import { Menu, X, User as UserIcon, LogOut, LogIn } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { Logo } from '../common/Logo'
 
 export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -33,16 +34,8 @@ export const Header: React.FC = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo & Platform Name */}
           <div className="flex items-center space-x-3">
-            <Link to="/" className="flex items-center space-x-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
-              <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center text-white">
-                <GraduationCap className="w-5 h-5" />
-              </div>
-              <div className="flex flex-col">
-                <span className="font-semibold text-lg tracking-tight text-white">Quizdesk</span>
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-medium -mt-1">
-                  Academic Portal
-                </span>
-              </div>
+            <Link to="/" className="focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg">
+              <Logo subtitle="MIT Academy of Engineering" />
             </Link>
           </div>
 

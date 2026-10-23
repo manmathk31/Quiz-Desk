@@ -1021,6 +1021,23 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - `npm run lint`: 0 errors.
    - Files modified: `frontend/src/components/layout/Header.tsx`, `frontend/src/pages/Home.tsx`, `frontend/src/App.tsx`, `docs/DECISIONS.md`, `docs/TASK_TRACKER.md`, `docs/PROJECT_LOG.md`.
 
+---
+
+## 8. Brand Logo & Plain Language Simplification (2026-10-24)
+
+### Execution Summary
+1. **Designed Modern Brand Logo (`frontend/src/components/common/Logo.tsx`)**:
+   - Created a custom geometric vector SVG mark representing Quizdesk (stylized desk/document with checkmark and accent spark in electric indigo/blue gradient).
+   - Replaced generic graduation cap icon across Header, Footer, and Student Login.
+2. **Simplified Plain Language & Toned Down AI Jargon**:
+   - Stripped out "Official Examination Portal", "Institutional Exam Architecture", "Server-Synchronized Timing", and "Institutional Governance & Exam Delivery".
+   - Grounded all copy to natural, collegiate phrasing: "MIT Academy of Engineering", "Online Quiz Platform", "College Account Access", "Auto-Saved Answers", and "Secure & Focused".
+   - Simplified Student Login to direct "Student Sign In" with college email placeholder (`student@mitaoe.ac.in`).
+3. **Verification**:
+   - `npm run build`: Verified 0 errors; completed in 864ms.
+   - Tested files: `frontend/src/components/common/Logo.tsx`, `frontend/src/components/layout/Header.tsx`, `frontend/src/components/layout/Footer.tsx`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/auth/StudentLogin.tsx`.
+
+
 
 
 
