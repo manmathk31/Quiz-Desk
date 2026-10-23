@@ -13,69 +13,75 @@ export const Logo: React.FC<LogoProps> = ({
   subtitle = 'MIT Academy of Engineering',
   size = 'md',
 }) => {
+  const containerSizes = {
+    sm: 'w-8 h-8 rounded-lg',
+    md: 'w-11 h-11 rounded-xl',
+    lg: 'w-14 h-14 rounded-2xl',
+  }
+
   const iconSizes = {
-    sm: 'w-7 h-7',
-    md: 'w-9 h-9',
-    lg: 'w-12 h-12',
+    sm: 'w-5 h-5',
+    md: 'w-7 h-7',
+    lg: 'w-9 h-9',
   }
 
   const titleSizes = {
     sm: 'text-base',
-    md: 'text-lg',
+    md: 'text-xl',
     lg: 'text-2xl',
   }
 
+  const subtitleSizes = {
+    sm: 'text-[10px]',
+    md: 'text-xs',
+    lg: 'text-sm',
+  }
+
   return (
-    <div className={`flex items-center space-x-2.5 ${className}`}>
-      {/* Modern Custom Geometric Mark */}
+    <div className={`flex items-center space-x-3 ${className}`}>
+      {/* High-Definition Brand Mark */}
       <div
-        className={`${iconSizes[size]} relative flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-700 shadow-md shadow-blue-500/20 text-white shrink-0 overflow-hidden`}
+        className={`${containerSizes[size]} relative flex items-center justify-center bg-gradient-to-br from-blue-500 via-indigo-600 to-blue-700 shadow-lg shadow-indigo-600/30 text-white shrink-0 ring-1 ring-white/20 transition-transform duration-200 hover:scale-105`}
       >
         <svg
-          viewBox="0 0 32 32"
+          viewBox="0 0 40 40"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          className="w-5 h-5 text-white"
+          className={iconSizes[size]}
         >
-          {/* Base Document / Desk Card */}
+          {/* Subtle Inner Card Backdrop */}
           <rect
-            x="6"
-            y="5"
-            width="20"
-            height="22"
-            rx="4"
-            className="stroke-white/30"
-            strokeWidth="1.5"
-            fill="currentColor"
-            fillOpacity="0.08"
+            x="8"
+            y="8"
+            width="24"
+            height="24"
+            rx="5"
+            fill="white"
+            fillOpacity="0.16"
           />
-          {/* Subtle Top Clip */}
+          {/* Distinct Assessment Checkmark */}
           <path
-            d="M12 5V4C12 3.44772 12.4477 3 13 3H19C19.5523 3 20 3.44772 20 4V5"
-            className="stroke-white"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-          />
-          {/* Checkmark Question Mark Combo */}
-          <path
-            d="M11 16.5L14.5 20L21 12"
-            className="stroke-white"
-            strokeWidth="2.25"
+            d="M13 20.5L18 25.5L27 14.5"
+            stroke="white"
+            strokeWidth="3.2"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {/* Spark Dot */}
-          <circle cx="21" cy="20" r="1.5" className="fill-blue-200" />
+          {/* Focus Accent Spark */}
+          <circle cx="28.5" cy="27.5" r="2.5" fill="#38BDF8" />
         </svg>
       </div>
 
       {/* Brand Typography */}
-      <div className="flex flex-col leading-none">
-        <span className={`font-bold tracking-tight text-white ${titleSizes[size]}`}>
-          Quizdesk
-        </span>
+      <div className="flex flex-col justify-center leading-tight">
+        <div className="flex items-center space-x-1.5">
+          <span className={`font-extrabold tracking-tight text-white ${titleSizes[size]}`}>
+            Quizdesk
+          </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+        </div>
         {showSubtitle && (
-          <span className="text-[11px] text-slate-400 font-medium tracking-normal mt-0.5">
+          <span className={`text-slate-300 font-medium tracking-normal ${subtitleSizes[size]}`}>
             {subtitle}
           </span>
         )}

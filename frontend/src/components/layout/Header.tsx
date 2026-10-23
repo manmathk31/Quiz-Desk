@@ -93,10 +93,10 @@ export const Header: React.FC = () => {
               <div className="flex items-center space-x-3">
                 <Link
                   to="/student/login"
-                  className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm"
+                  className="flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md shadow-blue-600/20 hover:scale-[1.02]"
                 >
                   <LogIn className="w-3.5 h-3.5" />
-                  <span>Student Sign In</span>
+                  <span>Take Assessment</span>
                 </Link>
               </div>
             )}
@@ -157,10 +157,10 @@ export const Header: React.FC = () => {
                 <Link
                   to="/student/login"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-center space-x-1.5 py-2 px-3 bg-blue-600 text-white rounded-lg text-xs font-semibold"
+                  className="flex items-center justify-center space-x-1.5 py-2.5 px-3 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-sm"
                 >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Student Sign In</span>
+                  <LogIn className="w-4 h-4" />
+                  <span>Take Assessment</span>
                 </Link>
               </div>
             )}

@@ -1037,6 +1037,28 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - `npm run build`: Verified 0 errors; completed in 864ms.
    - Tested files: `frontend/src/components/common/Logo.tsx`, `frontend/src/components/layout/Header.tsx`, `frontend/src/components/layout/Footer.tsx`, `frontend/src/pages/Home.tsx`, `frontend/src/pages/auth/StudentLogin.tsx`.
 
+---
+
+## 9. Modern Home Page Redesign & "Take Assessment" CTA Overhaul (2026-10-24)
+
+### Execution Summary
+1. **Scaled & High-Contrast Logo**:
+   - Scaled up logo dimensions to `w-11 h-11` (md) and `w-14 h-14` (lg), ensuring clear visibility and presence on high-DPI displays.
+   - Boosted icon stroke width to 3.2px with vivid contrast accents and an accent spark.
+   - Enlarged "Quizdesk" wordmark with bold letter-spacing.
+2. **Product-Grade Value Pitching**:
+   - Completely replaced bland and obvious statements with compelling, collegiate value propositions.
+   - Headline: *"Assessments made seamless."*
+   - Live interactive session mockup card showing real-time question preview, countdown clock, and cloud autosave status.
+   - Core value cards: *Zero-Config Access*, *Continuous Autosave*, and *Distraction-Free Focus*.
+   - Added 3-step walkthrough: *Sign In with College ID* $\rightarrow$ *Review & Launch* $\rightarrow$ *Review & Submit*.
+3. **Intuitive Action Call-to-Action**:
+   - Replaced passive "Student Sign In" with direct action **"Take Assessment"** in the navigation header, mobile menu, and home page hero.
+4. **Verification**:
+   - `npm run build`: Verified 0 errors; built in 876ms.
+   - Modified files: `frontend/src/components/common/Logo.tsx`, `frontend/src/components/layout/Header.tsx`, `frontend/src/pages/Home.tsx`.
+
+
 
 
 
