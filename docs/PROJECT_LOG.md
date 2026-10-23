@@ -8,9 +8,9 @@ This document is the single authoritative historical log and persistent memory f
 
 - **Project Name**: Quizdesk
 - **Core Purpose**: A high-reliability, real college quiz and assessment platform featuring separate student and teacher experiences. Engineered for scheduled examinations, strict academic integrity, automated grading, server-authoritative timings, and resilient autosaving under concurrent loads.
-- **Current Development Stage**: **Phase 1: Repository Foundation & Toolchain Setup (In progress)**
+- **Current Development Stage**: **Phase 5: Student Roster Import, Quiz Assignment & Eligibility Enforcement (Completed)**
 - **Working Directory**: `d:\ANUP\Quizdesk`
-- **Active Branch**: `main` (Git repository initialized)
+- **Active Branch**: `main`
 
 ---
 
@@ -436,6 +436,64 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Ran frontend linter (`oxlint`): 0 errors across 27 files.
   - Ran frontend production build (`npm run build`): passed in 709ms with 0 errors.
 
+### 2026-10-23: Phase 5 - Student Roster Import, Quiz Assignment & Eligibility Enforcement
+- **Context & Objectives**:
+  - Implemented the full student roster ingestion, validation, and quiz assignment lifecycle for Quizdesk.
+  - Implemented secure student identity matching against authoritative database records (`User` + `StudentProfile`) without trusting client inputs or treating roster rows as proof of identity.
+  - Implemented a two-stage dry-run preview and transactional import workflow with revalidation, conflict rejection, and duplicate prevention.
+  - Added full assignment management (listing with search & filters, single student assignment, status revocation/reactivation, and attempt-protected deletion).
+  - Implemented a reusable server-side eligibility check verifying authenticated student identity, active status, assignment status, PRN alignment, and scheduling windows.
+- **Action**: Data Model & Migration (DEC-018)
+  - Extended `QuizAssignment` in `backend/app/models/roster.py` with `is_active: bool = True`, `revoked_at: datetime | None`, `revoked_by_id: UUID | None` (FK to `users.id`), relationship `revoked_by`, and index `ix_quiz_assignments_active` on `['quiz_id', 'is_active']`.
+  - Authored migration `backend/alembic/versions/0005_assignment_lifecycle.py` chaining `0004_question_difficulty -> 0005_assignment_lifecycle`.
+  - Tested migration chain: verified `0005_assignment_lifecycle -> 0004_question_difficulty -> 0003_question_bank -> 0002_integrity -> 0001_initial_schema`. Verified static offline SQL generation for both upgrade and downgrade.
+- **Action**: Dual-Format Roster Spreadsheet Parsing & Template Generation
+  - Created `backend/app/services/roster_parser.py`:
+    - Validates strict headers: `prn,name,email,division`.
+    - Preserves PRN as string (retaining leading zeros like `'00123'`).
+    - Normalizes emails to lowercase trimmed strings.
+    - Detects intra-file duplicate PRNs and duplicate emails with row-level actionable errors.
+    - Limits parsing to 500 rows and 2MB file size.
+    - Generates downloadable sample roster templates in both `.csv` and genuine `.xlsx` formats.
+- **Action**: Student Identity Alignment & Two-Stage Ingestion Service
+  - Created `backend/app/services/roster_service.py`:
+    - Bounded bulk querying for candidate PRNs and emails to evaluate matching in a single database round-trip.
+    - Categorizes candidates:
+      - `matched`: User exists and `StudentProfile.prn` matches roster PRN (`assigned_student_id = user.id`).
+      - `unregistered`: No user exists with that email or PRN (`assigned_student_id = None`; does NOT create unverified accounts).
+      - `pending_profile`: User exists with that email but has not yet completed a student profile.
+      - `conflict`: Account exists where email and PRN point to different records (blocks import with HTTP 422).
+    - Dry-run preview (`POST /api/v1/quizzes/{id}/roster/preview`): parses file, performs identity matching, reports metrics and conflict flags with zero database mutations.
+    - Transactional commit (`POST /api/v1/quizzes/{id}/roster/import`): revalidates file and current DB state within a transaction, creates or updates assignments additively, and emits an `AuditEvent`.
+- **Action**: Assignment Management & Eligibility Check Endpoints
+  - Created `backend/app/api/v1/endpoints/roster.py`:
+    - `GET /api/v1/quizzes/{id}/roster/template`: Download CSV or Excel template.
+    - `POST /api/v1/quizzes/{id}/roster/preview`: Dry-run roster validation.
+    - `POST /api/v1/quizzes/{id}/roster/import`: Transactional roster commit.
+    - `GET /api/v1/quizzes/{id}/assignments`: Filterable list of assigned students with summary metrics.
+    - `POST /api/v1/quizzes/{id}/assignments`: Single student manual assignment.
+    - `PATCH /api/v1/quizzes/{id}/assignments/{assignment_id}/status`: Revoke or reactivate an assignment with timestamp and teacher ID.
+    - `DELETE /api/v1/quizzes/{id}/assignments/{assignment_id}`: Hard delete assignment; strictly blocked with HTTP 400 if historical attempts exist.
+  - Created `backend/app/services/eligibility.py` & `backend/app/api/v1/endpoints/student_quiz.py`:
+    - `GET /api/v1/student/quizzes/{id}/eligibility`: Authoritative eligibility check returning `{eligible, reason, opens_at, closes_at, duration_minutes, max_attempts}`.
+    - Validates: authenticated active student, published quiz version, active assignment, PRN consistency, and active scheduling window.
+    - Seamlessly auto-binds previously `unregistered` assignments when a student with matching email and PRN registers.
+- **Action**: Teacher Frontend Roster & Eligibility Workspace
+  - Created `frontend/src/types/roster.ts` and `frontend/src/services/rosterApi.ts`.
+  - Created `frontend/src/pages/teacher/RosterTab.tsx`: Summary KPI cards, search, status filter, assignment table, revoke/reactivate controls, and attempt-safe delete modal.
+  - Created `frontend/src/pages/teacher/RosterImportModal.tsx`: Two-stage import modal with file dropzone, format guide, summary metrics, conflict alert banners, row preview table with status pills, and confirm action.
+  - Created `frontend/src/pages/teacher/AddStudentModal.tsx`: Single student manual entry modal with institutional field validation.
+  - Integrated "Student Roster & Eligibility" tab into `frontend/src/pages/teacher/QuizBuilder.tsx`.
+- **Action**: Automated Testing & Code Quality Verification
+  - Created 33 new backend tests across 3 test suites:
+    - `backend/tests/test_roster_parser.py`: 11 tests for CSV/XLSX, leading zeros, duplicates, headers, row limits, corrupt files, and template generation.
+    - `backend/tests/test_roster_api.py`: 12 tests for auth/ownership isolation, preview dry-run (0 writes), transactional import, conflict rejection, single add, revoke/reactivate, attempt-protected delete, and search filtering.
+    - `backend/tests/test_eligibility.py`: 10 tests for student role restriction, unpublished quiz rejection, unassigned/revoked rejection, identity mismatch denial, window timing, and auto-binding.
+  - Updated `backend/tests/test_models.py` to verify migration chain head `0005_assignment_lifecycle`.
+  - Ran full backend pytest suite: **104 passed in 5.18s**.
+  - Ran frontend linter (`oxlint`): **0 errors across 32 files**.
+  - Ran frontend production build (`tsc -b && vite build`): **passed in 1.52s with 0 errors**.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -458,15 +516,15 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
 | `.\.venv\Scripts\pip.exe install python-multipart==0.0.20` | `d:\ANUP\Quizdesk` | 0 | Installed python-multipart for file upload parsing. |
 | `.\.venv\Scripts\pip.exe install openpyxl==3.1.5` | `d:\ANUP\Quizdesk` | 0 | Installed openpyxl for genuine Excel workbook support. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `71 passed in 4.12s` (all models, migrations, auth, profile, CORS, CSV & Excel parser, question bank, and quiz builder tests passing). |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `104 passed in 5.18s` (all models, migrations, auth, profile, CORS, CSV & Excel parser, question bank, quiz builder, roster ingestion, and eligibility tests passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm install @supabase/supabase-js` | `d:\ANUP\Quizdesk\frontend` | 0 | Added Supabase browser client with 0 vulnerabilities. |
-| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 27 files. |
-| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 709ms. |
-| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank -> 0004_question_difficulty (head)`. |
-| `alembic -c backend/alembic.ini upgrade 0003_question_bank:0004_question_difficulty --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for difficulty column, index, and check constraint. |
-| `alembic -c backend/alembic.ini downgrade 0004_question_difficulty:0003_question_bank --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0004. |
+| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 32 files. |
+| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 1.52s. |
+| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank -> 0004_question_difficulty -> 0005_assignment_lifecycle (head)`. |
+| `alembic -c backend/alembic.ini upgrade 0004_question_difficulty:0005_assignment_lifecycle --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for assignment lifecycle columns, index, and FK. |
+| `alembic -c backend/alembic.ini downgrade 0005_assignment_lifecycle:0004_question_difficulty --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0005. |
 
 ---
 
@@ -482,14 +540,14 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API)**:
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `71 passed in 4.12s`.
+  - Results: `104 passed in 5.18s`.
 - **Frontend Linter & Production Build Verification**:
-  - Executed: `npm run lint` (oxlint): 0 errors across 27 files.
-  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2038 modules transformed in 709ms.
+  - Executed: `npm run lint` (oxlint): 0 errors across 32 files.
+  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2043 modules transformed in 1.52s.
 - **Alembic Offline Migration Checks**:
-  - Verified `upgrade 0003_question_bank:0004_question_difficulty --sql` and `downgrade 0004_question_difficulty:0003_question_bank --sql`.
+  - Verified `upgrade 0004_question_difficulty:0005_assignment_lifecycle --sql` and `downgrade 0005_assignment_lifecycle:0004_question_difficulty --sql`.
 
 ---
 
@@ -498,7 +556,8 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ### Known Risks & Modeling Trade-Offs:
 1. **Question Bank Isolation via Deep Copy**: Reusable bank questions are cloned with their options when added to a quiz version. Bank updates do not propagate to quizzes, preserving historical assessment integrity.
 2. **Published Quiz Mutability**: Modifying settings or questions on a published quiz automatically branches a new draft `QuizVersion`, leaving previous versions and student attempts attached to their original frozen snapshot.
-3. **High-Concurrency Load Simulation**: Actual simultaneous 50+ student exam load testing is reserved for Phase 8 against a deployed PostgreSQL environment.
+3. **Additive Roster Re-Imports**: Re-importing a roster updates student details (name, division) without silently removing unlisted students. Deletions require explicit removal in the teacher UI, which is blocked if historical attempts exist.
+4. **High-Concurrency Load Simulation**: Actual simultaneous 50+ student exam load testing is reserved for Phase 8 against a deployed PostgreSQL environment.
 
 ### Unresolved Questions / Future Confirmations:
 - Live Supabase project credentials to be provided in `.env.local` and `.env` prior to staging deployment.
@@ -506,14 +565,14 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All changes strictly adhere to DEC-001 through DEC-017.
+- **None**: All changes strictly adhere to DEC-001 through DEC-018.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-501`: Student roster CSV upload & validation API (Phase 5)**
-- Implement student CSV roster ingestion and validation (`prn,name,email,division`), duplicate rejection, and per-quiz assignment access control.
+**Task**: **`TASK-601`: Active quiz delivery API (Sanitized Payload) (Phase 6)**
+- Implement delivery of student exam payloads with stripped answer keys and explanations, attempt start window verification, single/multi attempt limits, and question/option randomization.
 
 
 

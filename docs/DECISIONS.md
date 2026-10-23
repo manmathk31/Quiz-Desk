@@ -285,5 +285,29 @@ This document tracks all formal architectural and product decisions for **Quizde
 - **Rationale**: Guarantees total academic integrity and stability during live simultaneous exams; prevents teachers from inadvertently modifying tests while students are actively sitting for them.
 - **Implications**: Quizzes maintain a clean lineage of versioned snapshots; attempt grading evaluates against the exact frozen version snapshot.
 
+---
+
+### DEC-018: Student Roster Ingestion, Identity Alignment, and Server-Authoritative Eligibility
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Roster Ingestion vs. User Identity**: Uploading a student roster CSV or Excel workbook (`prn,name,email,division`) creates eligibility records (`QuizAssignment`), but never creates user accounts, authenticates users, or elevates permissions. Roster uploads are strictly identity assertions, not proof of identity.
+  - **Dual Identifier Verification (Email + PRN)**:
+    - A student account is bound to an assignment (`assigned_student_id`) only when both the verified account email AND registered profile PRN match the roster row.
+    - If email matches but PRN differs, or if PRN belongs to another user, an Identity Conflict is raised and the assignment remains unlinked/blocked pending administrative review.
+    - If no user account exists yet, the assignment is created in an `unregistered` state (`assigned_student_id = NULL`), ready for automated linkage when the student completes registration.
+  - **Additive Import Default**:
+    - Re-importing a roster or importing subsequent batches is additive by default; students omitted from a later file are never silently revoked or deleted.
+    - Existing assignments have their name/division updated idempotently without generating duplicate rows or corrupting assignment primary keys.
+  - **Assignment Lifecycle & Attempt Protection**:
+    - `QuizAssignment` supports `is_active`, `revoked_at`, and `revoked_by_id`.
+    - Hard deletion of an assignment is permitted only if the student has no historical attempts on that quiz. If attempts exist, hard deletion is blocked with HTTP 400 Bad Request, requiring revocation instead to safeguard attempt audit trails.
+    - All roster imports, additions, status toggles, and deletions record tamper-evident `AuditEvent`s.
+  - **Server-Authoritative Eligibility Gate**:
+    - Student attempt endpoints verify eligibility strictly on the server: checking active account status, published quiz status, active assignment presence, verified identity alignment, and assessment scheduling windows (`opens_at <= now <= closes_at`).
+- **Rationale**: Prevents identity spoofing, protects historical assessment attempts, and guarantees reliable eligibility enforcement under concurrent exam conditions.
+- **Implications**: Migration `0005_assignment_lifecycle.py` introduced assignment status tracking; endpoint `GET /api/v1/student/quizzes/{id}/eligibility` exposes sanitized eligibility status without leaking exam contents.
+
+
 
 

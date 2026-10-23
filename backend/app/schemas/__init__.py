@@ -26,6 +26,19 @@ from app.schemas.quiz import (
     DifficultyBreakdown,
 )
 
+from app.schemas.roster import (
+    RosterRowErrorResponse,
+    RosterPreviewItemResponse,
+    RosterPreviewResponse,
+    RosterImportSummaryResponse,
+    AssignmentResponse,
+    AssignmentSummaryStats,
+    AssignmentListResponse,
+    AssignmentCreateRequest,
+    AssignmentStatusUpdateRequest,
+    StudentEligibilityResponse,
+)
+
 __all__ = [
     "UserResponse",
     "QuestionOptionCreate",
@@ -48,5 +61,16 @@ __all__ = [
     "AddQuestionsFromBankRequest",
     "ReorderQuestionsRequest",
     "DifficultyBreakdown",
+    "RosterRowErrorResponse",
+    "RosterPreviewItemResponse",
+    "RosterPreviewResponse",
+    "RosterImportSummaryResponse",
+    "AssignmentResponse",
+    "AssignmentSummaryStats",
+    "AssignmentListResponse",
+    "AssignmentCreateRequest",
+    "AssignmentStatusUpdateRequest",
+    "StudentEligibilityResponse",
 ]
+
 

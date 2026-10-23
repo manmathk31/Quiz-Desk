@@ -67,6 +67,15 @@ def test_unique_constraints_and_foreign_keys():
     assert "uq_quiz_assignment_prn" in qa_constraints
     assert "uq_quiz_assignment_email" in qa_constraints
 
+    # QuizAssignment columns & constraints
+    assignment_cols = tables["quiz_assignments"].columns
+    assert "is_active" in assignment_cols
+    assert "revoked_at" in assignment_cols
+    assert "revoked_by_id" in assignment_cols
+    assignment_constraints = {c.name for c in tables["quiz_assignments"].constraints}
+    assert "uq_quiz_assignment_prn" in assignment_constraints
+    assert "uq_quiz_assignment_email" in assignment_constraints
+
     # Question constraints
     q_constraints = {c.name for c in tables["questions"].constraints}
     assert "ck_question_positive_marks" in q_constraints
@@ -102,7 +111,11 @@ def test_alembic_migration_chain():
 
     heads = script.get_heads()
     assert len(heads) == 1
-    assert heads[0] == "0004_question_difficulty"
+    assert heads[0] == "0005_assignment_lifecycle"
+
+    rev5 = script.get_revision("0005_assignment_lifecycle")
+    assert rev5 is not None
+    assert rev5.down_revision == "0004_question_difficulty"
 
     rev4 = script.get_revision("0004_question_difficulty")
     assert rev4 is not None
@@ -119,4 +132,5 @@ def test_alembic_migration_chain():
     rev1 = script.get_revision("0001_initial_schema")
     assert rev1 is not None
     assert rev1.down_revision is None
+
 

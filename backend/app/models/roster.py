@@ -4,6 +4,7 @@ import uuid
 from typing import TYPE_CHECKING, Optional
 from sqlalchemy import (
     String,
+    Boolean,
     DateTime,
     ForeignKey,
     UniqueConstraint,
@@ -30,6 +31,7 @@ class QuizAssignment(Base, UUIDPrimaryKeyMixin):
         UniqueConstraint("quiz_id", "student_prn", name="uq_quiz_assignment_prn"),
         UniqueConstraint("quiz_id", "student_email", name="uq_quiz_assignment_email"),
         Index("ix_quiz_assignments_lookup", "quiz_id", "student_email"),
+        Index("ix_quiz_assignments_active", "quiz_id", "is_active"),
     )
 
     quiz_id: Mapped[uuid.UUID] = mapped_column(
@@ -49,6 +51,18 @@ class QuizAssignment(Base, UUIDPrimaryKeyMixin):
         nullable=True,
         index=True,
     )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False, index=True
+    )
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
@@ -56,6 +70,8 @@ class QuizAssignment(Base, UUIDPrimaryKeyMixin):
     # Relationships
     quiz: Mapped["Quiz"] = relationship("Quiz", back_populates="assignments")
     assigned_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[assigned_student_id])
+    revoked_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[revoked_by_id])
 
     def __repr__(self) -> str:
-        return f"<QuizAssignment quiz_id={self.quiz_id} prn={self.student_prn} division={self.division}>"
+        return f"<QuizAssignment quiz_id={self.quiz_id} prn={self.student_prn} active={self.is_active}>"
+

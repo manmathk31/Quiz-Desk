@@ -17,6 +17,7 @@ import {
 } from '../../services/quizApi'
 import { QuestionSelectorModal } from './QuestionSelectorModal'
 import { QuizPreviewModal } from './QuizPreviewModal'
+import { RosterTab } from './RosterTab'
 import {
   ArrowLeft,
   Save,
@@ -31,6 +32,7 @@ import {
   AlertCircle,
   Loader2,
   Settings,
+  Users,
 } from 'lucide-react'
 
 export const QuizBuilder: React.FC = () => {
@@ -38,12 +40,14 @@ export const QuizBuilder: React.FC = () => {
   const { session } = useAuth()
   const token = session?.access_token || ''
 
+  const [activeTab, setActiveTab] = useState<'content' | 'roster'>('content')
   const [quiz, setQuiz] = useState<QuizDetail | null>(null)
   const [activeVersion, setActiveVersion] = useState<QuizVersion | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successFeedback, setSuccessFeedback] = useState<string | null>(null)
+
 
   // Modals
   const [isSelectorOpen, setIsSelectorOpen] = useState(false)
@@ -301,6 +305,38 @@ export const QuizBuilder: React.FC = () => {
         </div>
       </div>
 
+      {/* Navigation Tabs */}
+      <div className="flex border-b border-slate-200 gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('content')}
+          className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+            activeTab === 'content'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Quiz Settings & Questions</span>
+          <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
+            {activeVersion.questions.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('roster')}
+          className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+            activeTab === 'roster'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Student Roster & Eligibility</span>
+        </button>
+      </div>
+
       {/* Success Notification */}
       {successFeedback && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-xs flex items-center space-x-2">
@@ -326,15 +362,19 @@ export const QuizBuilder: React.FC = () => {
         </div>
       )}
 
-      {/* Two-Column Editor Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Assessment Configuration Form (5 cols) */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-5">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-            <div className="flex items-center space-x-2">
-              <Settings className="w-4 h-4 text-blue-600" />
-              <h2 className="text-sm font-bold text-slate-900">Assessment Settings</h2>
-            </div>
+      {activeTab === 'roster' ? (
+        <RosterTab quizId={quiz.id} token={token} />
+      ) : (
+        /* Two-Column Editor Layout */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column: Assessment Configuration Form (5 cols) */}
+          <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center space-x-2">
+                <Settings className="w-4 h-4 text-blue-600" />
+                <h2 className="text-sm font-bold text-slate-900">Assessment Settings</h2>
+              </div>
+
             {isPublished && (
               <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                 Editing forks v{activeVersion.version_number + 1}
@@ -675,6 +715,9 @@ export const QuizBuilder: React.FC = () => {
           )}
         </div>
       </div>
+    )}
+
+
 
       {/* Question Selector Modal */}
       {isSelectorOpen && (
