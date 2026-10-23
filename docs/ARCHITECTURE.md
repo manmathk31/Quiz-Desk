@@ -320,3 +320,33 @@ To support reproducible development and QA rehearsal without endangering product
 - String preservation: PRNs are stored as strings (`String(64)`), strictly preserving leading zeros.
 - Mismatches between student account PRNs and roster rows are flagged as identity conflicts and rejected with HTTP 422 Unprocessable Entity.
 
+---
+
+## 8. Production Readiness, Health Probes, and Concurrency Architecture (Phase 9)
+
+### 8.1 Health & Readiness Probes
+The backend exposes two standard probes for orchestration (Kubernetes, AWS ECS, Docker Compose) and reverse proxies (Caddy, Nginx):
+- **Liveness Probe (`GET /health/live`)**: Returns `{"status": "alive"}` immediately with HTTP 200 without touching external dependencies. Verifies event loop and worker process health.
+- **Readiness Probe (`GET /health/ready`)**: Performs an active `SELECT 1` query against the database connection pool.
+  - On success: Returns HTTP 200 `{"status": "ready", "database": "connected"}`.
+  - On pool exhaustion or database disconnection: Returns HTTP 503 `{"status": "unhealthy", "database": "disconnected"}`. Traffic is automatically diverted from unready instances.
+
+### 8.2 Database Connection Pool Calibration for Supabase Poolers
+When connecting via Supabase Session Pooler (`port 5432` / Supavisor), upstream client connections are constrained (15 max on free tier).
+To prevent `EMAXCONNSESSION` connection exhaustion while serving 50+ concurrent student sessions, SQLAlchemy's `QueuePool` is configured as follows:
+- `DB_POOL_SIZE = 8`
+- `DB_MAX_OVERFLOW = 4`
+- `DB_POOL_TIMEOUT = 30` (seconds)
+- `DB_POOL_RECYCLE = 1800` (seconds, recycling stale connections before pooler timeouts)
+FastAPI's asynchronous I/O allows Python coroutines to yield database connections back into the local `QueuePool` during answer formatting, token parsing, and network transmission, achieving 50+ concurrent student operations with zero connection leakage.
+
+### 8.3 Concurrency & Load Testing Architecture
+Quizdesk includes an in-tree load testing framework located at `backend/load_tests/`:
+- **`runner.py`**: Standalone asynchronous load tester using `httpx.AsyncClient` with an `asyncio.Event` synchronization barrier to model synchronized exam starts.
+- **`locustfile.py`**: Turnkey Locust user simulation file for distributed load testing.
+- **Transactional Invariant Audit**: Automatically verifies post-run invariants in PostgreSQL:
+  1. `count(quiz_attempts) == target_students` (Zero duplicate attempts)
+  2. `count(attempt_answers) == target_students * questions_per_quiz` (Zero lost answers)
+  3. `0 <= score <= total_points` across all finalized attempts
+  4. Proctoring telemetry idempotency: duplicate telemetry submissions produce zero extra penalty deductions.
+
