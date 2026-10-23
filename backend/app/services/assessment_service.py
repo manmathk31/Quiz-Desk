@@ -232,13 +232,16 @@ def start_or_resume_attempt(
 
     now = datetime.now(timezone.utc)
 
-    # 2. Check for active in-progress attempt
-    existing_in_progress = db.scalar(
+    # 2. Check for existing attempts for this student on this published version
+    existing_attempts = db.scalars(
         select(QuizAttempt).where(
             QuizAttempt.quiz_version_id == version.id,
             QuizAttempt.student_id == student_user.id,
-            QuizAttempt.status == AttemptStatus.IN_PROGRESS,
         )
+    ).all()
+
+    existing_in_progress = next(
+        (a for a in existing_attempts if a.status == AttemptStatus.IN_PROGRESS), None
     )
 
     if existing_in_progress:
@@ -262,12 +265,7 @@ def start_or_resume_attempt(
             )
 
     # 3. Check attempt count limit
-    previous_count = db.scalar(
-        select(func.count(QuizAttempt.id)).where(
-            QuizAttempt.quiz_version_id == version.id,
-            QuizAttempt.student_id == student_user.id,
-        )
-    ) or 0
+    previous_count = len(existing_attempts)
 
     if previous_count >= version.max_attempts:
         raise HTTPException(
@@ -360,7 +358,6 @@ def start_or_resume_attempt(
     )
     db.add(audit)
     db.commit()
-    db.refresh(attempt)
 
     remaining = max(0, int((deadline - now).total_seconds()))
 
@@ -635,7 +632,6 @@ def save_attempt_answer(
         db.add(target_answer)
 
     db.commit()
-    db.refresh(target_answer)
 
     return AnswerSaveResponse(
         success=True,
@@ -787,10 +783,10 @@ def record_telemetry_event(
         if event_type in ("tab_switch", "window_blur"):
             attempt.tab_switch_count += 1
 
-    db.commit()
-    db.refresh(attempt)
-
     v_count = attempt.violation_count
+    tab_count = attempt.tab_switch_count
+    db.commit()
+
     chargeable = max(0, v_count - free_allowance)
     current_ded = min(chargeable * penalty_rate, max_deduction)
     remaining_free = max(0, free_allowance - v_count)
@@ -806,7 +802,7 @@ def record_telemetry_event(
             warning_msg = f"Violation penalty applied ({chargeable} chargeable incident(s)). Current estimated deduction: {current_ded:.2f} marks."
 
     return TelemetryEventResponse(
-        tab_switch_count=attempt.tab_switch_count,
+        tab_switch_count=tab_count,
         violation_count=v_count,
         free_allowance=free_allowance,
         remaining_free_violations=remaining_free,
@@ -971,8 +967,10 @@ def finalize_and_grade_attempt(
         },
     )
     db.add(audit)
+    submitted_at_dt = ensure_utc(attempt.submitted_at)
+    attempt_status_val = attempt.status
+    attempt_id_val = attempt.id
     db.commit()
-    db.refresh(attempt)
 
     message = (
         "Assessment submitted successfully. Results will be released by your course instructor."
@@ -981,9 +979,9 @@ def finalize_and_grade_attempt(
     )
 
     return AttemptSubmissionResponse(
-        attempt_id=attempt.id,
-        status=attempt.status,
-        submitted_at=ensure_utc(attempt.submitted_at),
+        attempt_id=attempt_id_val,
+        status=attempt_status_val,
+        submitted_at=submitted_at_dt,
         is_finalized=True,
         total_score=final_score if version.is_results_released else None,
         is_results_released=version.is_results_released,

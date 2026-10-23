@@ -4,7 +4,8 @@ import uuid
 import jwt
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -171,7 +172,9 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.get(User, user_id)
+    user = db.scalar(
+        select(User).options(joinedload(User.student_profile)).where(User.id == user_id)
+    )
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

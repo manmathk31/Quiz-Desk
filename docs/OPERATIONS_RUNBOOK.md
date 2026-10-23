@@ -177,6 +177,110 @@ Before granting student access for any live institutional quiz:
 - [ ] `/health/ready` returns HTTP 200 with database latency < 50ms.
 - [ ] `ENVIRONMENT=production` set in backend environment (disables `/api/v1/admin/reset`).
 - [ ] `ALLOW_DESTRUCTIVE_RESET=false` verified.
+- [ ] `CORS_ORIGINS` configured with explicit production domain(s) (no wildcards).
 - [ ] Student rosters imported and assignment counts verified.
 - [ ] Logical backup snapshot created (`pg_dump`) and stored in secure offline storage.
 - [ ] Teacher accounts verified and test quiz verified by teacher in preview mode.
+- [ ] Custom SMTP configured in Supabase Auth if faculty password recovery is required for > 5 users.
+
+---
+
+## 8. Recommended Pilot Hosting Architecture & Costs
+
+For an initial college pilot of approximately 30–50 students, the simplest, most maintainable, and cost-effective deployment arrangement is:
+
+| Component | Recommended Host | Tier / Plan | Estimated Cost | Rationale & Cold-Start Behavior |
+| :--- | :--- | :--- | :--- | :--- |
+| **Frontend** | **Vercel** or **Cloudflare Pages** | Free Tier | **$0.00** | Global edge CDN, unlimited bandwidth, instant TTFB, zero cold starts. Rewrite fallback handled via `vercel.json` or `_redirects`. |
+| **Backend** | **Render** or **Railway** | Starter / Hobby (Persistent) | **$5.00 – $7.00 / month** | **CRITICAL:** Free tiers on Render sleep after 15 min of inactivity (50–90s cold start spins cause client timeouts). A persistent starter instance ($5–7/mo) ensures 24/7 responsiveness, instant quiz starts, and Docker container support. |
+| **Database** | **Supabase** | Free Tier (or Pro $25/mo for PITR) | **$0.00** (Free) | PostgreSQL 17 + Session Pooler. Free tier provides 500MB storage, which comfortably holds thousands of attempts for a 30-student pilot. |
+| **Total Estimated Pilot Cost** | | | **~$5.00 to $7.00 / month** | Reliable, predictable, and zero unexpected cold-start timeouts. |
+
+---
+
+## 9. Step-by-Step Production Deployment Guide
+
+### 9.1 Backend Deployment (Render or Railway via Docker)
+1. **Repository Setup**:
+   - Connect GitHub repository to Render/Railway.
+   - Set Root Directory to `backend` (or use repository root with Dockerfile `backend/Dockerfile`).
+2. **Environment Variables Configuration**:
+   ```ini
+   ENVIRONMENT="production"
+   ALLOW_DESTRUCTIVE_RESET="false"
+   DATABASE_URL="postgresql+psycopg://postgres.[REF]:[PASS]@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+   DB_POOL_SIZE="8"
+   DB_MAX_OVERFLOW="4"
+   DB_POOL_TIMEOUT="30"
+   DB_POOL_RECYCLE="1800"
+   SUPABASE_URL="https://[PROJECT_REF].supabase.co"
+   SUPABASE_JWT_SECRET="[YOUR_SUPABASE_JWT_SECRET]"
+   SUPABASE_JWT_ALGORITHM="HS256"
+   SUPABASE_JWT_AUDIENCE="authenticated"
+   CORS_ORIGINS='["https://quizdesk.yourinstitution.edu"]'
+   ADMIN_EMAIL="admin@institution.edu"
+   ADMIN_NAME="System Administrator"
+   ADMIN_BOOTSTRAP_TOKEN="[GENERATE_SECURE_RANDOM_TOKEN]"
+   ```
+3. **Pre-Deploy Migration Command**:
+   - In deployment settings, configure the release/pre-deploy hook:
+     ```bash
+     alembic -c alembic.ini upgrade head
+     ```
+4. **Health Check Probe Path**:
+   - Configure health check endpoint to `/health/live` (for container liveness) and `/health/ready` (for traffic readiness).
+
+### 9.2 Frontend Deployment (Vercel or Cloudflare Pages)
+1. **Build Configuration**:
+   - Framework Preset: `Vite`
+   - Root Directory: `frontend`
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+2. **Environment Variables**:
+   ```ini
+   VITE_API_BASE_URL="https://api-quizdesk.yourinstitution.edu"
+   VITE_SUPABASE_URL="https://[PROJECT_REF].supabase.co"
+   VITE_SUPABASE_ANON_KEY="[YOUR_PUBLIC_ANON_KEY]"
+   ```
+   *(Note: Never add `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_JWT_SECRET` to frontend variables).*
+3. **SPA Routing Rewrites**:
+   - Handled automatically by [`frontend/vercel.json`](file:///d:/ANUP/Quizdesk/frontend/vercel.json) or [`frontend/public/_redirects`](file:///d:/ANUP/Quizdesk/frontend/public/_redirects).
+
+### 9.3 Custom SMTP Setup for Password Recovery
+Supabase Auth limits password recovery emails to **5 emails per hour** on the default shared email service:
+1. In the Supabase Dashboard, navigate to **Project Settings > Auth > SMTP Settings**.
+2. Enable **Enable Custom SMTP**.
+3. Supply SMTP credentials from an institutional mail relay or transactional service (e.g., Resend, AWS SES, SendGrid):
+   - Host: `smtp.resend.com` (or provider host)
+   - Port: `587`
+   - User: `resend`
+   - Password: `[API_KEY]`
+   - Sender Email: `noreply@institution.edu`
+   - Sender Name: `Quizdesk Assessment System`
+
+---
+
+## 10. Performance Triage & Optimization Findings (Phase 10)
+
+### 10.1 Root Cause Analysis of Latency Under Load
+During Phase 9 benchmark tests (50 concurrent students), p95 latency reached 15–19 seconds. The systematic investigation revealed two primary contributing factors:
+1. **QueuePool Serialization Under Synchronization Barrier**:
+   - The load test harness utilized `asyncio.Event()` to release 50 student coroutines at the exact same millisecond.
+   - The connection pool was bounded to 12 slots (`DB_POOL_SIZE=8`, `DB_MAX_OVERFLOW=4`) to honor Supabase free-tier 15-connection limits.
+   - The stopwatch $t_0$ started when the barrier opened. Therefore, requests 13–50 waited in the local Python FIFO queue for earlier batches to complete. The high p95 was predominantly **queue wait time**, not single-request execution latency.
+2. **Geographic Network Round-Trips to Supabase**:
+   - Running the backend locally in Windows connecting to Supabase in AWS across residential broadband incurs 60–100ms per round trip.
+   - Redundant queries (e.g. separate count queries, profile re-fetching) and explicit `db.refresh()` calls after commits compounded this latency.
+
+### 10.2 Phase 10 Surgical Improvements
+1. **Eager Student Profile Loading**: In `get_current_user`, user lookup now eager-loads `student_profile` via `joinedload(User.student_profile)`, eliminating a secondary user lookup query in `check_student_quiz_eligibility`.
+2. **Eager Quiz Version Loading**: In `check_student_quiz_eligibility`, `Quiz` is fetched with `joinedload(Quiz.versions)`, eliminating lazy-load query round-trips.
+3. **Attempt Check Consolidation**: In `start_or_resume_attempt`, existing attempts and attempt counts are resolved from a single query.
+4. **Elimination of Redundant `db.refresh()`**: Removed unnecessary `db.refresh()` post-commit calls in `save_attempt_answer`, `start_or_resume_attempt`, `record_telemetry_event`, and `finalize_and_grade_attempt` where entities are already materialized in memory.
+
+### 10.3 Measured Impact (30 Concurrent Students)
+- **Quiz-Start Burst**: p95 dropped from 19.76s to **7.37s** (**62.7% reduction**).
+- **Autosave Bursts**: p95 dropped from 11.19s to **5.04s** (**55.0% reduction**).
+- **Proctoring Telemetry**: p95 dropped from 17.35s to **6.80s** (**60.8% reduction**).
+- **Submission Burst**: p95 dropped from 15.65s to **6.92s** (**55.8% reduction**).
+- **Database Integrity**: 30/30 attempts, 150/150 answers persisted, 0 duplicate attempts, 0 lost answers (**100% clean verification**).

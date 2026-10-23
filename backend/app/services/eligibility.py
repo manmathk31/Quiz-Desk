@@ -70,15 +70,18 @@ def check_student_quiz_eligibility(
             detail="Account is deactivated. Contact institutional administrator.",
         )
 
-    # Ensure student_user is attached to session with profile loaded
-    fresh_user = db.scalar(
-        select(User).options(joinedload(User.student_profile)).where(User.id == student_user.id)
-    )
-    if fresh_user:
-        student_user = fresh_user
+    # Ensure student_user has profile loaded if not already in session
+    if student_user.student_profile is None:
+        fresh_user = db.scalar(
+            select(User).options(joinedload(User.student_profile)).where(User.id == student_user.id)
+        )
+        if fresh_user:
+            student_user = fresh_user
 
-    # 1. Look up Quiz
-    quiz = db.get(Quiz, quiz_id)
+    # 1. Look up Quiz with published versions eager-loaded
+    quiz = db.scalar(
+        select(Quiz).options(joinedload(Quiz.versions)).where(Quiz.id == quiz_id)
+    )
     if not quiz or quiz.is_archived:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -95,23 +98,19 @@ def check_student_quiz_eligibility(
     # Use latest published version snapshot
     version: QuizVersion = published_versions[-1]
 
-    # 3. Look up QuizAssignment
-    # First priority: check by assigned_student_id
-    assignment_stmt = select(QuizAssignment).where(
-        QuizAssignment.quiz_id == quiz.id,
-        QuizAssignment.assigned_student_id == student_user.id,
+    # 3. Look up QuizAssignment (combined check: assigned ID or matching email)
+    assignment_stmt = (
+        select(QuizAssignment)
+        .where(
+            QuizAssignment.quiz_id == quiz.id,
+            (QuizAssignment.assigned_student_id == student_user.id)
+            | (QuizAssignment.student_email == student_user.email.lower()),
+        )
+        .order_by((QuizAssignment.assigned_student_id == student_user.id).desc())
     )
     assignment = db.scalar(assignment_stmt)
 
-    if not assignment:
-        # Fallback check by verified institutional email
-        email_stmt = select(QuizAssignment).where(
-            QuizAssignment.quiz_id == quiz.id,
-            QuizAssignment.student_email == student_user.email.lower(),
-        )
-        assignment = db.scalar(email_stmt)
-
-        if assignment:
+    if assignment and assignment.assigned_student_id is None:
             # Verify PRN alignment before binding
             if student_user.student_profile and student_user.student_profile.prn:
                 if student_user.student_profile.prn.upper() == assignment.student_prn.upper():

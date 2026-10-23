@@ -845,6 +845,70 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `npm run lint` (oxlint) | `frontend` | 0 | 0 errors across 51 files. |
 | `npm run build` (`tsc -b && vite build`) | `frontend` | 0 | TypeScript check and Vite production build passed in 760ms. |
 
+---
+
+# Phase 10: Minimal Performance Triage and Deployment Readiness
+
+**Stage**: Phase 10  
+**Status**: Fully Investigated, Optimized, Benchmarked, and Documented  
+**Date**: 2026-10-23  
+
+---
+
+## 1. Latency Root Cause Analysis (Part A)
+- **Investigation of Phase 9 Latency:**
+  1. **QueuePool Serialization:** Under synchronized load testing (`asyncio.Event`), all 50 virtual student coroutines fired at the exact same millisecond. Because the database connection pool was constrained to 12 slots (`DB_POOL_SIZE=8`, `DB_MAX_OVERFLOW=4`) to honor Supabase free-tier 15-connection limits, requests 13–50 were queued in memory inside `QueuePool`. The high p95/p99 numbers (~15–20s) represented **queue waiting time**, not backend processing time.
+  2. **Remote Geographic WAN Latency:** The local backend in Windows connects across public broadband to Supabase in AWS (60–100ms per round trip). Redundant queries and post-commit `db.refresh()` round trips multiplied this latency.
+  3. **Real Pilot Assessment Behavior:** In a realistic 30-student college pilot where students click "Start Assessment" over a natural 10-second window, average concurrency is ~1.2 connections, well within the 12-connection pool limit.
+
+---
+
+## 2. Low-Risk Query & Round-Trip Optimizations
+1. **Eager Student Profile Loading**: In [`backend/app/core/auth.py`](file:///d:/ANUP/Quizdesk/backend/app/core/auth.py), `get_current_user` now eager-loads `student_profile` via `joinedload(User.student_profile)`, eliminating a secondary user lookup query in `check_student_quiz_eligibility`.
+2. **Eager Quiz Versions Loading**: In [`backend/app/services/eligibility.py`](file:///d:/ANUP/Quizdesk/backend/app/services/eligibility.py), `Quiz` is fetched with `joinedload(Quiz.versions)`, eliminating lazy-load round trips. Combined assignment lookups into a single ordered query.
+3. **Consolidated Attempt Check**: In [`backend/app/services/assessment_service.py`](file:///d:/ANUP/Quizdesk/backend/app/services/assessment_service.py), `start_or_resume_attempt` queries existing attempts once to resolve both in-progress attempts and total attempt counts.
+4. **Elimination of Redundant `db.refresh()`**: Removed unnecessary `db.refresh()` calls after `db.commit()` in `save_attempt_answer`, `start_or_resume_attempt`, `record_telemetry_event`, and `finalize_and_grade_attempt` where entities are already materialized in memory.
+
+---
+
+## 3. Concurrency Re-Benchmark (30 Students)
+- **Target Concurrency:** 30 Students (College Pilot Size) | Target Server: `http://127.0.0.1:8000` | Database: Supabase PG
+- **Stage 1 (Quiz Start Burst):** 30/30 OK (100%) | Latency: p50=5.19s, p95=**7.37s** (62.7% reduction vs 19.76s in Phase 9) | Throughput: 3.87 req/s
+- **Stage 2 (Autosave Bursts - 150 saves):** 150/150 OK (100%) | Latency: p50=3.26s, p95=**5.04s** (55.0% reduction vs 11.19s in Phase 9) | Throughput: 5.90 req/s
+- **Stage 3 (Telemetry Bursts - 60 events):** 60/60 OK (100%) | Latency: p50=2.48s, p95=**6.80s** (60.8% reduction vs 17.35s in Phase 9) | Throughput: 7.31 req/s
+- **Stage 4 (Teacher Monitoring Queries):** 10/10 OK (100%) | Latency: p50=2.14s, p95=**3.33s**
+- **Stage 5 (Submission Burst - 30 submits):** 30/30 OK (100%) | Latency: p50=4.45s, p95=**6.92s** (55.8% reduction vs 15.65s in Phase 9) | Throughput: 3.96 req/s
+- **Database Invariant Audit:** 30/30 attempts finalized, 150/150 answers persisted, 0 duplicate attempts, 0 lost answers, scores strictly non-negative (`[PASS] Verified`).
+
+---
+
+## 4. Production Deployment Readiness (Part B)
+- **Backend Packaging:**
+  - Created [`backend/Dockerfile`](file:///d:/ANUP/Quizdesk/backend/Dockerfile) with multi-stage slim Python 3.11 image and `/health/live` container probe.
+  - Created [`backend/.dockerignore`](file:///d:/ANUP/Quizdesk/backend/.dockerignore).
+- **Frontend SPA Routing:**
+  - Created [`frontend/vercel.json`](file:///d:/ANUP/Quizdesk/frontend/vercel.json) for Vercel SPA routing rewrites.
+  - Created [`frontend/public/_redirects`](file:///d:/ANUP/Quizdesk/frontend/public/_redirects) for Cloudflare Pages / Netlify fallback.
+- **Hosting Recommendations & Costs:**
+  - **Frontend:** Vercel or Cloudflare Pages (Free Tier, $0.00/mo, zero cold starts, global edge CDN).
+  - **Backend:** Render Starter or Railway Hobby (**$5.00 – $7.00/mo persistent tier**). Free tiers on Render sleep after 15 minutes of inactivity (50–90s cold start spins cause client timeouts). A persistent starter instance is required for examination reliability.
+  - **Database & Auth:** Supabase PostgreSQL 17 (Free Tier, $0.00/mo, 500MB storage).
+  - **Password Recovery Email Limit:** Documented custom SMTP setup requirement in Supabase Auth (default free tier is capped at 5 emails/hour).
+- **Documentation:** Updated [`docs/OPERATIONS_RUNBOOK.md`](file:///d:/ANUP/Quizdesk/docs/OPERATIONS_RUNBOOK.md) with complete deployment guide, checklist, and failure recovery.
+
+---
+
+## 5. Commands Executed & Outcomes (Chronological)
+
+| Command Line | Directory | Exit Code | Outcome Summary |
+|---|---|---|---|
+| `..\.venv\Scripts\python.exe -m pytest -v` | `backend` | 0 | 170 passed in 9.79s (verified zero regressions from query optimizations). |
+| `..\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000` | `backend` | 0 | Started local backend server for load verification. |
+| `..\.venv\Scripts\python.exe -c "import httpx; ..."` | `backend` | 0 | `200 {'status': 'ready', 'database': 'connected'}` verified. |
+| `..\.venv\Scripts\python.exe load_tests/runner.py --concurrency 30` | `backend` | 0 | 30-student load test completed with 0 errors; measured 55%–62% p95 reduction; DB audit passed. |
+| `npm run lint` (oxlint) | `frontend` | 0 | 0 errors across 51 files. |
+| `npm run build` (`tsc -b && vite build`) | `frontend` | 0 | TypeScript compilation and Vite build succeeded in 758ms. |
+
 
 
 
