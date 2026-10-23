@@ -1,5 +1,6 @@
-"""Core application configuration and settings."""
-from typing import Optional
+from typing import Optional, Union, List
+import json
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,12 +12,36 @@ class Settings(BaseSettings):
     # PostgreSQL Database URL (psycopg3 driver)
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/quizdesk"
 
+    # Database Connection Pooling (Calibrated for Supabase Session Pooler 15-client limit)
+    DB_POOL_SIZE: int = 8
+    DB_MAX_OVERFLOW: int = 4
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+
     # CORS Allowed Origins (Restricted list; no wildcard in production)
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
     ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            v_trimmed = v.strip()
+            if v_trimmed.startswith("[") and v_trimmed.endswith("]"):
+                try:
+                    parsed = json.loads(v_trimmed)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except json.JSONDecodeError:
+                    pass
+            # Split comma-separated string
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        elif isinstance(v, list):
+            return [str(item).strip() for item in v if str(item).strip()]
+        return []
 
     # Supabase Auth & JWT Configuration
     SUPABASE_URL: Optional[str] = None
@@ -45,3 +70,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

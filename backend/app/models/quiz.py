@@ -128,7 +128,12 @@ class QuizVersion(Base, UUIDPrimaryKeyMixin):
     shuffle_questions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     shuffle_options: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     multi_answer_policy: Mapped[MultiAnswerPolicy] = mapped_column(
-        Enum(MultiAnswerPolicy, name="multi_answer_policy_enum", native_enum=False),
+        Enum(
+            MultiAnswerPolicy,
+            name="multi_answer_policy_enum",
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=MultiAnswerPolicy.ALL_OR_NOTHING,
     )

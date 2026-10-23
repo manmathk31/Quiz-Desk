@@ -71,7 +71,12 @@ class Question(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         default=QuestionType.SINGLE_CHOICE,
     )
     difficulty: Mapped[QuestionDifficulty] = mapped_column(
-        Enum(QuestionDifficulty, name="question_difficulty_enum", native_enum=False),
+        Enum(
+            QuestionDifficulty,
+            name="question_difficulty_enum",
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=QuestionDifficulty.MEDIUM,
         server_default="medium",
