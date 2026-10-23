@@ -1058,6 +1058,32 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - `npm run build`: Verified 0 errors; built in 876ms.
    - Modified files: `frontend/src/components/common/Logo.tsx`, `frontend/src/components/layout/Header.tsx`, `frontend/src/pages/Home.tsx`.
 
+---
+
+## 10. Student On-Demand Activation, PRN Initial Password & Dashboard UX (2026-10-24)
+
+### Execution Summary
+1. **Student Self-Activation Endpoint (`backend/app/api/v1/endpoints/auth.py`)**:
+   - Implemented `POST /api/v1/auth/student-activate` accepting `email` and `prn`.
+   - Validates that student exists in an enrolled `QuizAssignment` before provisioning an account.
+   - Uses Supabase Admin API to create the user account with password = PRN (auto-confirmed).
+   - Creates `User` and `StudentProfile` in PostgreSQL and updates all assignments for that student (`assigned_student_id = user.id`).
+2. **Optional Division in Roster Ingestion (`backend/app/services/roster_parser.py`)**:
+   - Made `division` optional in CSV/XLSX imports.
+   - Blank division values or absent headers safely default to `"General"`, eliminating spreadsheet rejection errors.
+3. **Seamless First-Time Login UX (`frontend/src/pages/auth/StudentLogin.tsx`)**:
+   - When student signs in for the first time, form automatically activates their account using their PRN and signs them in.
+   - Added friendly inline hint: *"First time? Use your PRN"*.
+4. **Personalized Welcome & Optional Password Management (`frontend/src/pages/student/StudentDashboard.tsx`)**:
+   - Greeting: *"Welcome back, {profile?.name || 'Student'}! 👋"*.
+   - Non-intrusive security tip: *"Account Tip: If you logged in using your default PRN, you can set your own personal password anytime."*
+   - Change Password modal dialog updating password via `supabase.auth.updateUser({ password })`.
+5. **Verification**:
+   - Backend tests: 173 passed in 13.14s (including 3 new tests in `test_student_activate.py`).
+   - Frontend build: `tsc -b && vite build` built in 741ms with 0 errors.
+   - Frontend lint: 0 errors across 51 files.
+
+
 
 
 

@@ -1,4 +1,3 @@
-"""Pydantic schemas for User responses (DEC-001, DEC-013)."""
 import uuid
 from pydantic import BaseModel, ConfigDict
 from app.models.user import UserRole

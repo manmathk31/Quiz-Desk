@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { fetchStudentQuizzes, startOrResumeAttempt } from '../../services/assessmentApi'
+import { supabase } from '../../lib/supabase'
 import type { StudentQuizSummary } from '../../types/assessment'
 import {
   GraduationCap,
@@ -13,6 +14,8 @@ import {
   CheckCircle2,
   RefreshCw,
   Search,
+  KeyRound,
+  X,
 } from 'lucide-react'
 import { AssessmentReadinessModal } from './AssessmentReadinessModal'
 
@@ -27,6 +30,51 @@ export const StudentDashboard: React.FC = () => {
   const [startingQuizId, setStartingQuizId] = useState<string | null>(null)
   const [selectedQuizForReadiness, setSelectedQuizForReadiness] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+
+  // Password Management State
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [showPasswordTip, setShowPasswordTip] = useState(true)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwdUpdating, setPwdUpdating] = useState(false)
+  const [pwdError, setPwdError] = useState<string | null>(null)
+  const [pwdSuccess, setPwdSuccess] = useState(false)
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPwdError(null)
+    setPwdSuccess(false)
+
+    if (newPassword.length < 6) {
+      setPwdError('Password must be at least 6 characters long.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPwdError('Passwords do not match.')
+      return
+    }
+
+    setPwdUpdating(true)
+    try {
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword })
+      if (updateErr) {
+        setPwdError(updateErr.message)
+      } else {
+        setPwdSuccess(true)
+        setNewPassword('')
+        setConfirmPassword('')
+        setShowPasswordTip(false)
+        setTimeout(() => {
+          setIsPasswordModalOpen(false)
+          setPwdSuccess(false)
+        }, 1500)
+      }
+    } catch (err: unknown) {
+      setPwdError(err instanceof Error ? err.message : 'Failed to update password.')
+    } finally {
+      setPwdUpdating(false)
+    }
+  }
 
   const loadQuizzes = useCallback(async () => {
     if (!token) return
@@ -85,29 +133,32 @@ export const StudentDashboard: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 text-slate-900">
-      {/* Header */}
+      {/* Header with Personalized Welcome */}
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-slate-200 gap-4">
         <div>
           <div className="flex items-center space-x-3 mb-1">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
-              <GraduationCap className="w-6 h-6" />
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-md shadow-blue-500/20">
+              {profile?.name ? profile.name.charAt(0).toUpperCase() : 'S'}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Student Assessment Portal</h1>
+              <h1 className="text-xl font-bold text-slate-900">
+                Welcome back, {profile?.name || 'Student'}! 👋
+              </h1>
               <p className="text-xs text-slate-500">
-                Institutional testing area & assigned course examinations
+                {profile?.email} • MIT Academy of Engineering
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
-          {profile?.email && (
-            <div className="text-right hidden sm:block">
-              <div className="text-xs font-semibold text-slate-800">{profile.email}</div>
-              <div className="text-xs text-slate-500">Verified Student Account</div>
-            </div>
-          )}
+        <div className="flex items-center space-x-2.5">
+          <button
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-xs"
+          >
+            <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+            <span>Change Password</span>
+          </button>
           <button
             onClick={loadQuizzes}
             disabled={isLoading}
@@ -118,6 +169,118 @@ export const StudentDashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Optional Password Recommendation Tip */}
+      {showPasswordTip && (
+        <div className="mt-4 p-3.5 bg-blue-50/80 border border-blue-200/80 rounded-xl flex items-center justify-between text-xs text-blue-900">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 shrink-0 font-bold text-xs">
+              💡
+            </div>
+            <p>
+              <span className="font-semibold">Account Tip:</span> If you logged in using your default PRN, you can set your own personal password anytime.
+            </p>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0 ml-4">
+            <button
+              onClick={() => setIsPasswordModalOpen(true)}
+              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-[11px] transition-colors"
+            >
+              Update Password
+            </button>
+            <button
+              onClick={() => setShowPasswordTip(false)}
+              className="text-blue-500 hover:text-blue-700 p-1"
+              title="Dismiss"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-bold text-slate-900">Set New Password</h2>
+              <button
+                onClick={() => {
+                  setIsPasswordModalOpen(false)
+                  setPwdError(null)
+                  setPwdSuccess(false)
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Choose a private password for your Quizdesk account.
+            </p>
+
+            {pwdSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs mb-4">
+                Password updated successfully!
+              </div>
+            )}
+
+            {pwdError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs mb-4">
+                {pwdError}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdatePassword} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">New Password</label>
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">Confirm New Password</label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-type new password"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPasswordModalOpen(false)
+                    setPwdError(null)
+                    setPwdSuccess(false)
+                  }}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pwdUpdating}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+                >
+                  {pwdUpdating ? 'Saving...' : 'Save Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Error Alert */}
       {error && (

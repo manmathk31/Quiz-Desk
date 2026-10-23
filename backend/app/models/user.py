@@ -54,6 +54,14 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         back_populates="student",
     )
 
+    @property
+    def prn(self) -> Optional[str]:
+        return self.student_profile.prn if self.student_profile else None
+
+    @property
+    def current_division(self) -> Optional[str]:
+        return self.student_profile.current_division if self.student_profile else None
+
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email} role={self.role}>"
 

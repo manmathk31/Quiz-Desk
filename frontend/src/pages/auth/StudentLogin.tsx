@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext'
 import { ShieldAlert, LogIn, CheckCircle2 } from 'lucide-react'
 import { Logo } from '../../components/common/Logo'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
 export const StudentLogin: React.FC = () => {
   const { session, user, role, signInWithEmail, isConfigured } = useAuth()
   const [email, setEmail] = useState('')
@@ -18,13 +20,50 @@ export const StudentLogin: React.FC = () => {
     setErrorMsg(null)
     setSubmitting(true)
 
+    const trimmedEmail = email.trim().toLowerCase()
+    const trimmedPassword = password.trim()
+
     try {
-      const { error } = await signInWithEmail(email, password)
-      if (error) {
-        setErrorMsg(error.message)
-      } else {
+      // 1. Attempt standard Supabase Auth sign-in
+      const { error } = await signInWithEmail(trimmedEmail, trimmedPassword)
+      if (!error) {
         navigate('/student/portal', { replace: true })
+        return
       }
+
+      // 2. If sign-in failed (student not yet activated in Supabase Auth),
+      // attempt first-time activation using PRN as initial password
+      try {
+        const activateRes = await fetch(`${API_BASE_URL}/api/v1/auth/student-activate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: trimmedEmail, prn: trimmedPassword }),
+        })
+
+        if (activateRes.ok) {
+          // Activation created or synced account in Supabase; retry sign-in
+          const retry = await signInWithEmail(trimmedEmail, trimmedPassword)
+          if (!retry.error) {
+            navigate('/student/portal', { replace: true })
+            return
+          }
+        } else if (activateRes.status === 401) {
+          const errData = await activateRes.json().catch(() => ({}))
+          setErrorMsg(
+            errData.detail ||
+              'Invalid credentials. If this is your first time logging in, your initial password is your enrolled PRN.'
+          )
+          return
+        }
+      } catch {
+        // Fall back to original error message
+      }
+
+      setErrorMsg(
+        error.message === 'Invalid login credentials'
+          ? 'Invalid credentials. If this is your first time logging in, your initial password is your enrolled PRN.'
+          : error.message
+      )
     } catch (err: unknown) {
       setErrorMsg(
         err instanceof Error ? err.message : 'An unexpected error occurred during sign in.'
@@ -108,16 +147,21 @@ export const StudentLogin: React.FC = () => {
         </div>
 
         <div>
-          <label htmlFor="student-password" className="block text-xs font-medium text-slate-700 mb-1">
-            Password
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="student-password" className="block text-xs font-medium text-slate-700">
+              Password
+            </label>
+            <span className="text-[11px] text-blue-600 font-medium">
+              First time? Use your PRN
+            </span>
+          </div>
           <input
             id="student-password"
             type="password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
+            placeholder="Enter your PRN or custom password"
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>

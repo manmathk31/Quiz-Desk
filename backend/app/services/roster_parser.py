@@ -12,7 +12,9 @@ from openpyxl.styles import Font, PatternFill, Alignment
 MAX_ROSTER_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
 MAX_ROSTER_ROWS = 500
 
-REQUIRED_ROSTER_HEADERS = ["prn", "name", "email", "division"]
+REQUIRED_ROSTER_HEADERS = ["prn", "name", "email"]
+OPTIONAL_ROSTER_HEADERS = ["division"]
+ALL_ROSTER_HEADERS = ["prn", "name", "email", "division"]
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
@@ -213,7 +215,7 @@ def _validate_roster_table(raw_rows: List[List[str]]) -> RosterValidationResult:
     header_row = [h.strip().lower() for h in raw_rows[0]]
     header_indices = {}
     for idx, h in enumerate(header_row):
-        if h in REQUIRED_ROSTER_HEADERS and h not in header_indices:
+        if h in ALL_ROSTER_HEADERS and h not in header_indices:
             header_indices[h] = idx
 
     missing_headers = [h for h in REQUIRED_ROSTER_HEADERS if h not in header_indices]
@@ -274,15 +276,18 @@ def _validate_roster_table(raw_rows: List[List[str]]) -> RosterValidationResult:
         row_has_error = False
 
         def get_val(col_name: str) -> str:
+            if col_name not in header_indices:
+                return ""
             col_idx = header_indices[col_name]
             if col_idx < len(row):
-                return str(row[col_idx]).strip()
+                val = row[col_idx]
+                return str(val).strip() if val is not None else ""
             return ""
 
         prn_val = get_val("prn")
         name_val = get_val("name")
         email_val = get_val("email")
-        division_val = get_val("division")
+        division_val = get_val("division") or "General"
 
         # 1. PRN Validation
         if not prn_val:
@@ -339,10 +344,9 @@ def _validate_roster_table(raw_rows: List[List[str]]) -> RosterValidationResult:
             else:
                 seen_emails[norm_email] = row_num
 
-        # 4. Division Validation
+        # 4. Division Validation (Defaults to 'General' if omitted)
         if not division_val:
-            errors.append(RosterRowError(row_number=row_num, column="division", message="Division is required."))
-            row_has_error = True
+            division_val = "General"
         elif len(division_val) > 32:
             errors.append(RosterRowError(row_number=row_num, column="division", message="Division exceeds maximum length of 32 characters."))
             row_has_error = True
@@ -371,7 +375,7 @@ def generate_roster_csv_template() -> str:
     """Generate CSV template with required headers and representative sample rows."""
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(REQUIRED_ROSTER_HEADERS)
+    writer.writerow(ALL_ROSTER_HEADERS)
     writer.writerow(["202401110001", "Aarav Sharma", "aarav.sharma@college.edu", "A"])
     writer.writerow(["202401110002", "Diya Patel", "diya.patel@college.edu", "A"])
     writer.writerow(["202401110003", "Rohan Kulkarni", "rohan.kulkarni@college.edu", "B"])
