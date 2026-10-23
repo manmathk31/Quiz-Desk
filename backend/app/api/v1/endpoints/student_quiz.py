@@ -1,19 +1,52 @@
-"""Student assessment inquiry and eligibility endpoints (DEC-005, DEC-007, Phase 5)."""
+"""Student assessment inquiry, delivery, autosave, telemetry, and submission endpoints (DEC-008, DEC-009, DEC-010, Phase 6)."""
 import uuid
+from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.auth import get_current_active_user, require_student
+from app.core.auth import require_student
 from app.models.user import User
 from app.services.eligibility import check_student_quiz_eligibility
+from app.services.assessment_service import (
+    list_student_quizzes,
+    start_or_resume_attempt,
+    get_attempt_content,
+    save_attempt_answer,
+    record_telemetry_event,
+    finalize_and_grade_attempt,
+)
 from app.schemas.roster import StudentEligibilityResponse
+from app.schemas.assessment import (
+    StudentQuizSummary,
+    StudentQuizListResponse,
+    AttemptStartResponse,
+    AttemptContentResponse,
+    AnswerSaveRequest,
+    AnswerSaveResponse,
+    TelemetryEventRequest,
+    TelemetryEventResponse,
+    AttemptSubmissionResponse,
+)
 
-router = APIRouter(prefix="/student/quizzes", tags=["Student Assessments"])
+router = APIRouter(prefix="/student", tags=["Student Assessments"])
 
 
-@router.get("/{id}/eligibility", response_model=StudentEligibilityResponse)
+@router.get("/quizzes", response_model=StudentQuizListResponse)
+def get_student_assigned_quizzes(
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db),
+):
+    """
+    List all assessments assigned to authenticated student.
+    Returns real-time availability status, schedule windows, and active attempt indicator.
+    """
+    items = list_student_quizzes(db, current_user)
+    return StudentQuizListResponse(items=items, total=len(items))
+
+
+@router.get("/quizzes/{id}/eligibility", response_model=StudentEligibilityResponse)
 def check_assessment_eligibility(
     id: uuid.UUID,
     current_user: User = Depends(require_student),
@@ -50,3 +83,93 @@ def check_assessment_eligibility(
         is_open=res.is_open,
         status_message=res.status_message,
     )
+
+
+@router.post("/quizzes/{id}/attempts", response_model=AttemptStartResponse, status_code=status.HTTP_201_CREATED)
+def start_or_resume_assessment_attempt(
+    id: uuid.UUID,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db),
+):
+    """
+    Start a new assessment attempt or resume an active in-progress attempt.
+    - Resumes without resetting timer if an active attempt exists.
+    - Enforces max attempt limits and schedule window.
+    - Authoritative deadline calculation: min(now + duration, closes_at).
+    - Persists stable randomized question/option sequence for this session.
+    """
+    return start_or_resume_attempt(db, id, current_user)
+
+
+@router.get("/attempts/{attempt_id}", response_model=AttemptContentResponse)
+def get_assessment_attempt_content(
+    attempt_id: uuid.UUID,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch sanitized question set and current student answer state for an attempt.
+    - Verified against caller student identity.
+    - Sanitized payload: no answer keys, no is_correct fields.
+    - Returns stored randomized question & option sequences.
+    - Checks deadline: lazily finalizes attempt as EXPIRED if time has elapsed.
+    """
+    return get_attempt_content(db, attempt_id, current_user)
+
+
+@router.put("/attempts/{attempt_id}/answers/{question_id}", response_model=AnswerSaveResponse)
+def autosave_question_answer(
+    attempt_id: uuid.UUID,
+    question_id: uuid.UUID,
+    payload: AnswerSaveRequest,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db),
+):
+    """
+    Autosave an answer for a specific question during an active attempt.
+    - Rejects writes if attempt is finalized or deadline has expired (409 Conflict).
+    - Validates options belong strictly to the question and version.
+    - Rejects out-of-order stale saves using monotonic client timestamp check.
+    - Targeted database operation.
+    """
+    return save_attempt_answer(db, attempt_id, question_id, payload, current_user)
+
+
+@router.post("/attempts/{attempt_id}/telemetry", response_model=TelemetryEventResponse)
+def report_assessment_telemetry(
+    attempt_id: uuid.UUID,
+    payload: TelemetryEventRequest,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db),
+):
+    """
+    Record proctoring telemetry (tab switch or window blur event).
+    - Increments attempt tab_switch_count.
+    - Returns warning threshold status.
+    """
+    return record_telemetry_event(db, attempt_id, payload, current_user)
+
+
+@router.post("/attempts/{attempt_id}/submit", response_model=AttemptSubmissionResponse)
+def submit_assessment_attempt(
+    attempt_id: uuid.UUID,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db),
+):
+    """
+    Finalize and submit an assessment attempt.
+    - Idempotent: repeated calls return consistent final state without re-grading.
+    - Evaluates positive marks, negative marks, and multi-answer scoring policies.
+    - Applies tab switch deductions if configured.
+    - Results held withheld until teacher explicitly releases them.
+    """
+    from app.models.attempt import QuizAttempt
+    attempt = db.get(QuizAttempt, attempt_id)
+    if not attempt or attempt.student_id != current_user.id:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment attempt session not found.",
+        )
+
+    return finalize_and_grade_attempt(db, attempt, is_expired=False)

@@ -26,6 +26,12 @@ This document tracks all formal architectural and product decisions for **Quizde
 | [DEC-011](#dec-011-administrative-governance-staging) | Administrative Governance Staging | `Confirmed` | 2026-10-23 |
 | [DEC-012](#dec-012-in-portal-communications-policy) | In-Portal Communications Policy | `Confirmed` | 2026-10-23 |
 | [DEC-013](#dec-013-security-authorization-and-load-testing-standards) | Security, Authorization, and Load Testing Standards | `Confirmed` | 2026-10-23 |
+| [DEC-014](#dec-014-database-integrity-constraints-immutability-and-result-release-architecture) | Database Integrity Constraints & Immutability | `Confirmed` | 2026-10-23 |
+| [DEC-015](#dec-015-authentication-integration-readiness--non-self-promoting-user-provisioning) | Authentication Readiness & Non-Self-Promoting Provisioning | `Confirmed` | 2026-10-23 |
+| [DEC-016](#dec-016-question-difficulty-classification-and-dual-format-spreadsheet-ingestion-csv-and-xlsx) | Question Difficulty & Dual-Format Ingestion | `Confirmed` | 2026-10-23 |
+| [DEC-017](#dec-017-teacher-quiz-builder-question-cloning-isolation-and-immutable-version-lifecycle) | Teacher Quiz Builder & Version Lifecycle | `Confirmed` | 2026-10-23 |
+| [DEC-018](#dec-018-student-roster-ingestion-identity-alignment-and-server-authoritative-eligibility) | Student Roster Ingestion & Eligibility Gate | `Confirmed` | 2026-10-23 |
+| [DEC-019](#dec-019-secure-student-assessment-engine-shuffling-persistence-autosave-invariants-and-authoritative-grading) | Secure Assessment Delivery, Autosave & Grading | `Confirmed` | 2026-10-23 |
 
 ---
 
@@ -307,6 +313,34 @@ This document tracks all formal architectural and product decisions for **Quizde
     - Student attempt endpoints verify eligibility strictly on the server: checking active account status, published quiz status, active assignment presence, verified identity alignment, and assessment scheduling windows (`opens_at <= now <= closes_at`).
 - **Rationale**: Prevents identity spoofing, protects historical assessment attempts, and guarantees reliable eligibility enforcement under concurrent exam conditions.
 - **Implications**: Migration `0005_assignment_lifecycle.py` introduced assignment status tracking; endpoint `GET /api/v1/student/quizzes/{id}/eligibility` exposes sanitized eligibility status without leaking exam contents.
+
+---
+
+### DEC-019: Secure Student Assessment Engine, Shuffling Persistence, Autosave Invariants, and Authoritative Grading
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Server-Authoritative Attempt Lifecycle**:
+    - An attempt session (`QuizAttempt`) is created only after authoritative verification of student role, active account status, active assignment, and scheduled availability window (`opens_at <= now <= closes_at`).
+    - Attempt deadline is strictly computed as $\min(\text{started\_at} + \text{duration\_minutes}, \text{closes\_at})$.
+    - Idempotent Resumption: Repeated start requests or page refreshes return the existing active in-progress attempt without creating duplicate attempts or resetting deadlines.
+    - Attempt Limits: Bounded strictly by `QuizVersion.max_attempts` backed by database unique constraints (`uq_attempt_number_per_student`).
+  - **Randomized Sequence Persistence**:
+    - When `shuffle_questions` or `shuffle_options` is enabled on the `QuizVersion`, randomized sequences are permanently stored in `QuizAttempt.question_order` (JSON array of question IDs) and `QuizAttempt.option_order` (JSON dict of `{question_id: [option_ids]}`).
+    - Every retrieval, refresh, and autosave interaction strictly references the persisted order, preventing option permutation errors across reconnects.
+  - **Concealed Delivery Payloads**:
+    - Assessment delivery endpoints (`GET /api/v1/student/attempts/{id}`) serialize through dedicated `SanitizedQuestionResponse` and `SanitizedOptionResponse` Pydantic models.
+    - Fields such as `is_correct`, `explanation`, or correct answer keys are strictly omitted from active assessment schemas.
+  - **Autosave Invariants & Out-of-Order Write Defense**:
+    - Autosaves (`PUT /api/v1/student/attempts/{id}/answers/{question_id}`) update targeted `AttemptAnswer` rows without reloading the full quiz.
+    - Out-of-order delayed HTTP writes are safely rejected by comparing monotonic `client_timestamp` against existing saved timestamps.
+    - Saves attempted after the authoritative server deadline or after attempt finalization are rejected with HTTP 409 Conflict.
+  - **Authoritative Grading & Result Release Isolation**:
+    - All grading evaluates on the server in `finalize_and_grade_attempt` across single-choice, True/False, and multi-answer policies (`all_or_nothing`, `partial_no_penalty`, `partial_with_penalty`).
+    - Tab switch penalty deductions are evaluated transactionally.
+    - Final scores and correctness breakdowns remain concealed from students until the instructor explicitly triggers result release (`QuizVersion.is_results_released == True`).
+- **Rationale**: Eliminates client-side exam tampering, prevents timer and attempt count exploitation, protects student work against flaky connections, and guarantees academic integrity.
+- **Implications**: Schema updated in migration `0006_attempt_shuffling.py`; student endpoints mounted under `/api/v1/student/`.
 
 
 

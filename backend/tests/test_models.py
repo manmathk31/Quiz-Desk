@@ -111,7 +111,11 @@ def test_alembic_migration_chain():
 
     heads = script.get_heads()
     assert len(heads) == 1
-    assert heads[0] == "0005_assignment_lifecycle"
+    assert heads[0] == "0006_attempt_shuffling"
+
+    rev6 = script.get_revision("0006_attempt_shuffling")
+    assert rev6 is not None
+    assert rev6.down_revision == "0005_assignment_lifecycle"
 
     rev5 = script.get_revision("0005_assignment_lifecycle")
     assert rev5 is not None

@@ -8,7 +8,9 @@ import { NotFound } from './pages/NotFound'
 import { Login } from './pages/Login'
 import { Unauthorized } from './pages/Unauthorized'
 import { RequireRole } from './components/auth/RequireRole'
-import { StudentPortalPlaceholder } from './pages/StudentPortalPlaceholder'
+import { StudentDashboard } from './pages/student/StudentDashboard'
+import { ActiveAssessment } from './pages/student/ActiveAssessment'
+import { AssessmentCompletion } from './pages/student/AssessmentCompletion'
 import { TeacherPortalPlaceholder } from './pages/TeacherPortalPlaceholder'
 import { QuestionBank } from './pages/teacher/QuestionBank'
 import { QuizList } from './pages/teacher/QuizList'
@@ -26,12 +28,28 @@ export const App: React.FC = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
 
-            {/* Role-Protected Routes */}
+            {/* Student Role-Protected Routes */}
             <Route
               path="/student/portal"
               element={
                 <RequireRole allowedRoles={['student']}>
-                  <StudentPortalPlaceholder />
+                  <StudentDashboard />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/student/assessments/:attemptId"
+              element={
+                <RequireRole allowedRoles={['student']}>
+                  <ActiveAssessment />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/student/assessments/:attemptId/completed"
+              element={
+                <RequireRole allowedRoles={['student']}>
+                  <AssessmentCompletion />
                 </RequireRole>
               }
             />

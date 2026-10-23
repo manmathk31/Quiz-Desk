@@ -39,6 +39,21 @@ from app.schemas.roster import (
     StudentEligibilityResponse,
 )
 
+from app.schemas.assessment import (
+    StudentQuizSummary,
+    StudentQuizListResponse,
+    AttemptStartResponse,
+    SanitizedOptionResponse,
+    SavedAnswerResponse,
+    SanitizedQuestionResponse,
+    AttemptContentResponse,
+    AnswerSaveRequest,
+    AnswerSaveResponse,
+    TelemetryEventRequest,
+    TelemetryEventResponse,
+    AttemptSubmissionResponse,
+)
+
 __all__ = [
     "UserResponse",
     "QuestionOptionCreate",
@@ -71,6 +86,18 @@ __all__ = [
     "AssignmentCreateRequest",
     "AssignmentStatusUpdateRequest",
     "StudentEligibilityResponse",
+    "StudentQuizSummary",
+    "StudentQuizListResponse",
+    "AttemptStartResponse",
+    "SanitizedOptionResponse",
+    "SavedAnswerResponse",
+    "SanitizedQuestionResponse",
+    "AttemptContentResponse",
+    "AnswerSaveRequest",
+    "AnswerSaveResponse",
+    "TelemetryEventRequest",
+    "TelemetryEventResponse",
+    "AttemptSubmissionResponse",
 ]
 
 

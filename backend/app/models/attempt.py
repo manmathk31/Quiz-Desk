@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     UniqueConstraint,
     CheckConstraint,
+    Index,
     JSON,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -55,6 +56,7 @@ class QuizAttempt(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         CheckConstraint("attempt_number >= 1", name="ck_quiz_attempt_number"),
         CheckConstraint("deadline_at >= started_at", name="ck_quiz_attempt_deadline"),
         CheckConstraint("tab_switch_count >= 0", name="ck_quiz_attempt_tab_count"),
+        Index("ix_quiz_attempts_student_status", "student_id", "status"),
     )
 
     quiz_version_id: Mapped[uuid.UUID] = mapped_column(
@@ -93,6 +95,12 @@ class QuizAttempt(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # Telemetry Counter (DEC-009)
     tab_switch_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Stable Randomized Ordering (DEC-008, Phase 6)
+    # question_order: list of question UUID strings (e.g. ["uuid1", "uuid2"])
+    question_order: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    # option_order: dict mapping question UUID string to list of option UUID strings (e.g. {"uuid1": ["o1", "o2"]})
+    option_order: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
 
     # Relationships
     quiz_version: Mapped["QuizVersion"] = relationship("QuizVersion", back_populates="attempts")
@@ -144,6 +152,10 @@ class AttemptAnswer(Base, UUIDPrimaryKeyMixin):
     awarded_marks: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)
     saved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    # Monotonic client timestamp to reject out-of-order stale saves
+    client_timestamp: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Relationships

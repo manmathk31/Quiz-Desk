@@ -8,7 +8,7 @@ This document is the single authoritative historical log and persistent memory f
 
 - **Project Name**: Quizdesk
 - **Core Purpose**: A high-reliability, real college quiz and assessment platform featuring separate student and teacher experiences. Engineered for scheduled examinations, strict academic integrity, automated grading, server-authoritative timings, and resilient autosaving under concurrent loads.
-- **Current Development Stage**: **Phase 5: Student Roster Import, Quiz Assignment & Eligibility Enforcement (Completed)**
+- **Current Development Stage**: **Phase 6: Assessment Delivery & Real-Time Autosave Engine (Completed)**
 - **Working Directory**: `d:\ANUP\Quizdesk`
 - **Active Branch**: `main`
 
@@ -494,6 +494,49 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Ran frontend linter (`oxlint`): **0 errors across 32 files**.
   - Ran frontend production build (`tsc -b && vite build`): **passed in 1.52s with 0 errors**.
 
+### 2026-10-23: Phase 6 - Secure Student Assessment Engine, Autosave, Timers and Submission
+- **Context & Objectives**:
+  - Implemented the complete student-facing assessment execution lifecycle: assigned quiz discovery, server-authoritative attempt creation and resumption, sanitized question delivery, resilient debounced autosave, server-backed deadline timers, proctoring telemetry, and idempotent submission with institutional scoring.
+  - Hardened active exam security: active payloads strictly conceal all correct answers, answer keys, and grading explanations.
+  - Implemented stable question and option shuffling permanently stored on `QuizAttempt` to prevent permutation errors across reconnects and refreshes.
+  - Implemented out-of-order autosave protection via client timestamp comparisons, preventing network jitter from overwriting newer confirmed student answers.
+  - Implemented shared idempotent finalization evaluating Single Choice, True/False, and Multi-Answer policies (`all_or_nothing`, `partial_no_penalty`, `partial_with_penalty`), with scores withheld until instructor release.
+- **Action**: Data Model & Migration (DEC-019)
+  - Extended `QuizAttempt` in `backend/app/models/attempt.py` with `question_order` (JSON), `option_order` (JSON), and composite index `ix_quiz_attempts_student_status` on `['student_id', 'status']`.
+  - Extended `AttemptAnswer` in `backend/app/models/attempt.py` with `client_timestamp` (DateTime with time zone).
+  - Authored migration `backend/alembic/versions/0006_attempt_shuffling.py` chaining `0005_assignment_lifecycle -> 0006_attempt_shuffling`.
+  - Tested migration chain: verified `0006_attempt_shuffling -> 0005_assignment_lifecycle -> 0004_question_difficulty -> 0003_question_bank -> 0002_integrity -> 0001_initial_schema`. Verified static offline SQL generation for both upgrade and downgrade.
+- **Action**: Assessment Service & Authoritative Grading Engine
+  - Created `backend/app/services/assessment_service.py`:
+    - `list_student_quizzes`: queries assigned quizzes, lazy-finalizes expired sessions, and returns real-time availability statuses (`OPEN`, `UPCOMING`, `CLOSED`, `COMPLETED`).
+    - `start_or_resume_attempt`: server eligibility check, deadline calculation $\min(\text{start} + \text{duration}, \text{close})$, question/option shuffling persistence, and idempotent resumption.
+    - `get_attempt_content`: loads stored randomized order, attaches saved answers, strips correct-answer flags, and checks lazy deadline expiry.
+    - `save_attempt_answer`: verifies active status, deadline, question ownership, single-choice option limits, and rejects stale delayed writes using monotonic `client_timestamp`.
+    - `record_telemetry_event`: records focus loss / tab switch telemetry and evaluates warning limits.
+    - `finalize_and_grade_attempt`: evaluates raw scores across Single Choice, True/False, and Multi-Answer policies, applies tab-switch deductions, and logs audit events while withholding scores until instructor release.
+- **Action**: Student Assessment REST Endpoints
+  - Expanded `backend/app/api/v1/endpoints/student_quiz.py`:
+    - `GET /api/v1/student/quizzes`: List assigned assessments.
+    - `GET /api/v1/student/quizzes/{id}/eligibility`: Pre-flight eligibility check.
+    - `POST /api/v1/student/quizzes/{id}/attempts`: Start or resume attempt session.
+    - `GET /api/v1/student/attempts/{attempt_id}`: Fetch sanitized assessment content.
+    - `PUT /api/v1/student/attempts/{attempt_id}/answers/{question_id}`: Autosave answer.
+    - `POST /api/v1/student/attempts/{attempt_id}/telemetry`: Proctoring telemetry event.
+    - `POST /api/v1/student/attempts/{attempt_id}/submit`: Finalize and submit assessment.
+  - Enforced `require_student` guard (rejects teachers/admins with 403) and cross-student attempt isolation (404/403).
+- **Action**: Frontend Student Assessment Experience
+  - Created `frontend/src/types/assessment.ts` and `frontend/src/services/assessmentApi.ts`.
+  - Created `frontend/src/pages/student/StudentDashboard.tsx`: Clean academic dashboard displaying assigned assessments, availability badges, schedule windows, and resume triggers.
+  - Created `frontend/src/pages/student/ActiveAssessment.tsx`: Distraction-free exam room with synchronized server countdown timer, question navigator palette, review flags, debounced autosave status indicators (`Saving...`, `All answers saved`, `Save failed - Retrying`), proctoring telemetry listener, and confirmation modal.
+  - Created `frontend/src/pages/student/AssessmentCompletion.tsx`: Submission confirmation screen with institutional result release disclosure.
+  - Mounted routes in `frontend/src/App.tsx`.
+- **Action**: Automated Testing & Verification
+  - Created `backend/tests/test_assessment_api.py` with 14 comprehensive integration tests covering auth, unassigned denial, cross-student isolation, sanitized payload key omission, resume idempotency, max attempts, autosave validation, out-of-order write defense, tab switch telemetry, submission idempotency, scoring policies, and deadline expiry.
+  - Updated `backend/tests/test_models.py` migration chain to verify head `0006_attempt_shuffling`.
+  - Ran full backend pytest suite: **118 passed in 5.97s**.
+  - Ran frontend linter (`oxlint`): **0 errors across 39 files**.
+  - Ran frontend production build (`tsc -b && vite build`): **passed in 846ms with 0 errors**.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -516,22 +559,22 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
 | `.\.venv\Scripts\pip.exe install python-multipart==0.0.20` | `d:\ANUP\Quizdesk` | 0 | Installed python-multipart for file upload parsing. |
 | `.\.venv\Scripts\pip.exe install openpyxl==3.1.5` | `d:\ANUP\Quizdesk` | 0 | Installed openpyxl for genuine Excel workbook support. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `104 passed in 5.18s` (all models, migrations, auth, profile, CORS, CSV & Excel parser, question bank, quiz builder, roster ingestion, and eligibility tests passing). |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `118 passed in 5.97s` (all models, migrations, auth, profile, CORS, CSV/XLSX parser, question bank, quiz builder, roster ingestion, and assessment delivery tests passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm install @supabase/supabase-js` | `d:\ANUP\Quizdesk\frontend` | 0 | Added Supabase browser client with 0 vulnerabilities. |
-| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 32 files. |
-| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 1.52s. |
-| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank -> 0004_question_difficulty -> 0005_assignment_lifecycle (head)`. |
-| `alembic -c backend/alembic.ini upgrade 0004_question_difficulty:0005_assignment_lifecycle --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for assignment lifecycle columns, index, and FK. |
-| `alembic -c backend/alembic.ini downgrade 0005_assignment_lifecycle:0004_question_difficulty --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0005. |
+| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 39 files. |
+| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 846ms. |
+| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank -> 0004_question_difficulty -> 0005_assignment_lifecycle -> 0006_attempt_shuffling (head)`. |
+| `alembic -c backend/alembic.ini upgrade 0005_assignment_lifecycle:0006_attempt_shuffling --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for attempt shuffling columns, client timestamp, and student status index. |
+| `alembic -c backend/alembic.ini downgrade 0006_attempt_shuffling:0005_assignment_lifecycle --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0006. |
 
 ---
 
 ## 6. Dependencies Added / Removed
-- Added backend dependencies pinned in [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt):
+- Backend dependencies pinned in [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt):
   - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pyjwt==2.10.1`, `python-multipart==0.0.20`, `openpyxl==3.1.5`, `pytest`, `pytest-asyncio`, `httpx`.
-- Added frontend dependencies in [`frontend/package.json`](file:///d:/ANUP/Quizdesk/frontend/package.json):
+- Frontend dependencies in [`frontend/package.json`](file:///d:/ANUP/Quizdesk/frontend/package.json):
   - Runtime: `@supabase/supabase-js`, `react`, `react-dom`, `react-router-dom`, `lucide-react`.
   - Development: `tailwindcss`, `@tailwindcss/vite`, `vite`, `typescript`, `@types/react`, `@types/react-dom`, `oxlint`.
 
@@ -540,14 +583,14 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API)**:
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API, Assessment API)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `104 passed in 5.18s`.
+  - Results: `118 passed in 5.97s`.
 - **Frontend Linter & Production Build Verification**:
-  - Executed: `npm run lint` (oxlint): 0 errors across 32 files.
-  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2043 modules transformed in 1.52s.
+  - Executed: `npm run lint` (oxlint): 0 errors across 39 files.
+  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2012 modules transformed in 846ms.
 - **Alembic Offline Migration Checks**:
-  - Verified `upgrade 0004_question_difficulty:0005_assignment_lifecycle --sql` and `downgrade 0005_assignment_lifecycle:0004_question_difficulty --sql`.
+  - Verified `upgrade 0005_assignment_lifecycle:0006_attempt_shuffling --sql` and `downgrade 0006_attempt_shuffling:0005_assignment_lifecycle --sql`.
 
 ---
 
@@ -557,7 +600,7 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 1. **Question Bank Isolation via Deep Copy**: Reusable bank questions are cloned with their options when added to a quiz version. Bank updates do not propagate to quizzes, preserving historical assessment integrity.
 2. **Published Quiz Mutability**: Modifying settings or questions on a published quiz automatically branches a new draft `QuizVersion`, leaving previous versions and student attempts attached to their original frozen snapshot.
 3. **Additive Roster Re-Imports**: Re-importing a roster updates student details (name, division) without silently removing unlisted students. Deletions require explicit removal in the teacher UI, which is blocked if historical attempts exist.
-4. **High-Concurrency Load Simulation**: Actual simultaneous 50+ student exam load testing is reserved for Phase 8 against a deployed PostgreSQL environment.
+4. **Concurrent Exam Load Capacity**: Actual synchronized 50+ student exam load testing is reserved for Phase 8 against a deployed PostgreSQL environment.
 
 ### Unresolved Questions / Future Confirmations:
 - Live Supabase project credentials to be provided in `.env.local` and `.env` prior to staging deployment.
@@ -565,14 +608,14 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All changes strictly adhere to DEC-001 through DEC-018.
+- **None**: All changes strictly adhere to DEC-001 through DEC-019.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-601`: Active quiz delivery API (Sanitized Payload) (Phase 6)**
-- Implement delivery of student exam payloads with stripped answer keys and explanations, attempt start window verification, single/multi attempt limits, and question/option randomization.
+**Task**: **`TASK-701`: Automated grading engine & teacher review dashboard (Phase 7)**
+- Implement teacher assessment review dashboard, grade adjustments with mandatory audit logs, and result release workflow.
 
 
 
