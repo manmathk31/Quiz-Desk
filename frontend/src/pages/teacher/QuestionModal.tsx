@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import type { Question, QuestionCreatePayload, QuestionType } from '../../types/question'
+import type { Question, QuestionCreatePayload, QuestionType, QuestionDifficulty } from '../../types/question'
 import { X, Plus, Trash2, Check, AlertCircle, Loader2 } from 'lucide-react'
 
 interface QuestionModalProps {
@@ -21,6 +21,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
   initialQuestion,
 }) => {
   const [questionType, setQuestionType] = useState<QuestionType>('single_choice')
+  const [difficulty, setDifficulty] = useState<QuestionDifficulty>('medium')
   const [prompt, setPrompt] = useState('')
   const [positiveMarks, setPositiveMarks] = useState<number>(1.0)
   const [negativeMarks, setNegativeMarks] = useState<number>(0.0)
@@ -36,6 +37,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
   useEffect(() => {
     if (initialQuestion) {
       setQuestionType(initialQuestion.question_type)
+      setDifficulty(initialQuestion.difficulty || 'medium')
       setPrompt(initialQuestion.prompt)
       setPositiveMarks(Number(initialQuestion.positive_marks))
       setNegativeMarks(Number(initialQuestion.negative_marks))
@@ -47,6 +49,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
       )
     } else {
       setQuestionType('single_choice')
+      setDifficulty('medium')
       setPrompt('')
       setPositiveMarks(1.0)
       setNegativeMarks(0.0)
@@ -185,6 +188,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
 
     const payload: QuestionCreatePayload = {
       question_type: questionType,
+      difficulty: difficulty,
       prompt: cleanPrompt,
       positive_marks: positiveMarks,
       negative_marks: negativeMarks,
@@ -237,8 +241,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
             </div>
           )}
 
-          {/* Question Type & Marks Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Question Type, Difficulty & Marks Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Question Type
@@ -246,11 +250,26 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
               <select
                 value={questionType}
                 onChange={(e) => handleTypeChange(e.target.value as QuestionType)}
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
-                <option value="single_choice">Single Choice (MCQ)</option>
-                <option value="multiple_choice">Multiple Choice (Multi-MCQ)</option>
+                <option value="single_choice">Single MCQ</option>
+                <option value="multiple_choice">Multi-MCQ</option>
                 <option value="true_false">True / False</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Difficulty
+              </label>
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value as QuestionDifficulty)}
+                className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
               </select>
             </div>
 
@@ -264,14 +283,14 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
                 min="0.25"
                 value={positiveMarks}
                 onChange={(e) => setPositiveMarks(parseFloat(e.target.value) || 0)}
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Negative Penalty Marks
+                Negative Penalty
               </label>
               <input
                 type="number"
@@ -279,7 +298,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
                 min="0"
                 value={negativeMarks}
                 onChange={(e) => setNegativeMarks(parseFloat(e.target.value) || 0)}
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>

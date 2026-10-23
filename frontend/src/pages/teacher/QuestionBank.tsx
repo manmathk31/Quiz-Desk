@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import type { Question, QuestionType, QuestionCreatePayload } from '../../types/question'
+import type { Question, QuestionType, QuestionDifficulty, QuestionCreatePayload } from '../../types/question'
 import {
   fetchQuestionBank,
   createQuestion,
@@ -37,6 +37,7 @@ export const QuestionBank: React.FC = () => {
   const [pageSize] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
   const [typeFilter, setTypeFilter] = useState<string>('')
+  const [difficultyFilter, setDifficultyFilter] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState<string>('')
 
   // UI state
@@ -59,6 +60,7 @@ export const QuestionBank: React.FC = () => {
         page,
         page_size: pageSize,
         question_type: typeFilter || undefined,
+        difficulty: difficultyFilter || undefined,
         search: searchQuery.trim() || undefined,
       })
       setQuestions(data.items)
@@ -69,7 +71,7 @@ export const QuestionBank: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [token, page, pageSize, typeFilter, searchQuery])
+  }, [token, page, pageSize, typeFilter, difficultyFilter, searchQuery])
 
   useEffect(() => {
     loadQuestions()
@@ -140,6 +142,29 @@ export const QuestionBank: React.FC = () => {
         return (
           <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200">
             True / False
+          </span>
+        )
+    }
+  }
+
+  const renderDifficultyBadge = (difficulty: QuestionDifficulty) => {
+    switch (difficulty) {
+      case 'easy':
+        return (
+          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+            Easy
+          </span>
+        )
+      case 'medium':
+        return (
+          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+            Medium
+          </span>
+        )
+      case 'hard':
+        return (
+          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
+            Hard
           </span>
         )
     }
@@ -234,30 +259,48 @@ export const QuestionBank: React.FC = () => {
           />
         </div>
 
-        {/* Type Filter Pills */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0">
-          {[
-            { label: 'All Types', value: '' },
-            { label: 'Single MCQ', value: 'single_choice' },
-            { label: 'Multi MCQ', value: 'multiple_choice' },
-            { label: 'True / False', value: 'true_false' },
-          ].map((pill) => (
-            <button
-              key={pill.value}
-              type="button"
-              onClick={() => {
-                setTypeFilter(pill.value)
-                setPage(1)
-              }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
-                typeFilter === pill.value
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {pill.label}
-            </button>
-          ))}
+        {/* Type & Difficulty Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Difficulty Dropdown */}
+          <select
+            value={difficultyFilter}
+            onChange={(e) => {
+              setDifficultyFilter(e.target.value)
+              setPage(1)
+            }}
+            className="text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Difficulties</option>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+
+          {/* Type Filter Pills */}
+          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0">
+            {[
+              { label: 'All Types', value: '' },
+              { label: 'Single MCQ', value: 'single_choice' },
+              { label: 'Multi MCQ', value: 'multiple_choice' },
+              { label: 'True / False', value: 'true_false' },
+            ].map((pill) => (
+              <button
+                key={pill.value}
+                type="button"
+                onClick={() => {
+                  setTypeFilter(pill.value)
+                  setPage(1)
+                }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
+                  typeFilter === pill.value
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -274,8 +317,8 @@ export const QuestionBank: React.FC = () => {
           </div>
           <h3 className="text-sm font-semibold text-slate-800">No questions found</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            {searchQuery || typeFilter
-              ? 'No questions matched your active filters. Try resetting search or type filter.'
+            {searchQuery || typeFilter || difficultyFilter
+              ? 'No questions matched your active filters. Try resetting search, difficulty, or type filter.'
               : 'Your question bank is empty. Create questions manually or import a batch via CSV.'}
           </p>
           <div className="pt-2 flex items-center justify-center space-x-2">
@@ -311,6 +354,7 @@ export const QuestionBank: React.FC = () => {
                     #{(page - 1) * pageSize + qIndex + 1}
                   </span>
                   {renderTypeBadge(q.question_type)}
+                  {renderDifficultyBadge(q.difficulty)}
                   <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                     +{Number(q.positive_marks).toFixed(2)} pts
                   </span>

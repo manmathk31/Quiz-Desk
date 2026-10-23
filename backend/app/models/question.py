@@ -32,6 +32,13 @@ class QuestionType(str, enum.Enum):
     TRUE_FALSE = "true_false"
 
 
+class QuestionDifficulty(str, enum.Enum):
+    """Question difficulty level."""
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+
+
 class Question(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """
     Assessment question belonging to an immutable QuizVersion or a teacher's Question Bank.
@@ -62,6 +69,13 @@ class Question(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Enum(QuestionType, name="question_type_enum", native_enum=False),
         nullable=False,
         default=QuestionType.SINGLE_CHOICE,
+    )
+    difficulty: Mapped[QuestionDifficulty] = mapped_column(
+        Enum(QuestionDifficulty, name="question_difficulty_enum", native_enum=False),
+        nullable=False,
+        default=QuestionDifficulty.MEDIUM,
+        server_default="medium",
+        index=True,
     )
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

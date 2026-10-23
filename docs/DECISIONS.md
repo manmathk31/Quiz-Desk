@@ -245,4 +245,45 @@ This document tracks all formal architectural and product decisions for **Quizde
 - **Rationale**: Prevents privilege escalation and credential leakage while establishing a clear, auditable boundary between Supabase identity and Quizdesk authorization.
 - **Implications**: Frontend client and backend services adhere strictly to separate environment files (`frontend/.env.local` vs. `backend/.env`).
 
+---
+
+### DEC-016: Question Difficulty Classification and Dual-Format Spreadsheet Ingestion (.CSV and .XLSX)
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Constrained Difficulty Enum**: Added a database-level `QuestionDifficulty` enum with values `easy`, `medium`, and `hard`. Enforced via SQL check constraint (`ck_question_difficulty_enum`) and an index (`ix_questions_difficulty`) for fast faceted querying.
+  - **Safe Historical Migration & Server Default**: Existing and imported questions without explicit difficulty default safely to `'medium'` at both database and application layers, avoiding null pointer issues while accurately representing typical assessment baselines.
+  - **Scoring Neutrality**: Question difficulty is purely an analytical and organizational facet; it has zero implicit impact on positive or negative marks.
+  - **Dual Spreadsheet Ingestion**:
+    - Both standard `.csv` (with UTF-8 and UTF-8-BOM support) and genuine `.xlsx` (via `openpyxl`) workbooks are accepted.
+    - Automatic format detection via file extension and MIME type.
+    - Size and count limits: 2MB file limit and 200 question row limit to protect memory and CPU.
+    - Normalization: Difficulty inputs are trimmed and lowercased; unrecognized difficulty values produce actionable row-level validation errors rather than silently coercing or crashing.
+- **Rationale**: Eliminates format friction for teachers who draft questions in Microsoft Excel while guaranteeing robust validation, predictable scoring, and relational integrity.
+- **Implications**: Pinned `openpyxl==3.1.5` in backend dependencies; updated Alembic migration `0004_question_difficulty.py` with backward-compatible defaults.
+
+---
+
+### DEC-017: Teacher Quiz Builder, Question Cloning Isolation, and Immutable Version Lifecycle
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Question Bank Isolation via Deep Copy**: When questions from the reusable question bank are added to a quiz, they are deep-copied into new `Question` records linked directly to the draft `quiz_version_id`. Modifying, deleting, or re-importing questions in the bank will never alter existing quiz drafts or published assessment content.
+  - **Immutable Version Locking**:
+    - Publishing a quiz transitions the active `QuizVersion.is_published` from `false` to `true` inside a single atomic database transaction.
+    - Pre-publication server validation strictly verifies:
+      - At least 1 question is attached.
+      - Every attached question has at least 2 options and at least 1 correct answer.
+      - Assessment schedule is valid (`closes_at > opens_at`).
+      - Assessment duration is positive (`duration_minutes > 0`).
+      - Maximum attempts is positive (`max_attempts > 0`).
+  - **Version Forking on Subsequent Draft Edits**:
+    - Once a `QuizVersion` is published, any subsequent configuration edit, question addition, question removal, or reordering request automatically branches a new draft `QuizVersion` (incrementing `version_number`), deep-cloning all settings, questions, and options.
+    - Existing student attempts, answers, and telemetry remain permanently attached to the specific `QuizVersion` they began on.
+  - **Cross-Teacher Isolation**:
+    - Endpoints under `/api/v1/quizzes` verify ownership against the authenticated teacher (`quiz.created_by_id == current_user.id`). Attempting to view or mutate another teacher's quiz returns a safe HTTP 404 Not Found to prevent metadata probing.
+- **Rationale**: Guarantees total academic integrity and stability during live simultaneous exams; prevents teachers from inadvertently modifying tests while students are actively sitting for them.
+- **Implications**: Quizzes maintain a clean lineage of versioned snapshots; attempt grading evaluates against the exact frozen version snapshot.
+
+
 

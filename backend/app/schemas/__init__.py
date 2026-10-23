@@ -12,6 +12,20 @@ from app.schemas.question import (
     CSVRowErrorResponse,
 )
 
+from app.schemas.quiz import (
+    QuizCreateRequest,
+    QuizUpdateRequest,
+    QuizListItemResponse,
+    QuizListResponse,
+    QuizDetailResponse,
+    QuizVersionResponse,
+    QuizPreviewResponse,
+    PublishQuizResponse,
+    AddQuestionsFromBankRequest,
+    ReorderQuestionsRequest,
+    DifficultyBreakdown,
+)
+
 __all__ = [
     "UserResponse",
     "QuestionOptionCreate",
@@ -23,5 +37,16 @@ __all__ = [
     "CSVPreviewResponse",
     "CSVImportResponse",
     "CSVRowErrorResponse",
+    "QuizCreateRequest",
+    "QuizUpdateRequest",
+    "QuizListItemResponse",
+    "QuizListResponse",
+    "QuizDetailResponse",
+    "QuizVersionResponse",
+    "QuizPreviewResponse",
+    "PublishQuizResponse",
+    "AddQuestionsFromBankRequest",
+    "ReorderQuestionsRequest",
+    "DifficultyBreakdown",
 ]
 

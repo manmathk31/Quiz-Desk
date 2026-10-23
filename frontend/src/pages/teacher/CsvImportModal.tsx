@@ -106,9 +106,9 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
               <Upload className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Import Questions from CSV</h2>
+              <h2 className="text-base font-bold text-slate-900">Import Questions from CSV or Excel</h2>
               <p className="text-xs text-slate-500">
-                Bulk import reusable questions with preview and error checking
+                Bulk import reusable questions with preview, difficulty detection, and error checking
               </p>
             </div>
           </div>
@@ -142,9 +142,9 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
             <div className="flex items-center space-x-3">
               <FileText className="w-5 h-5 text-slate-500" />
               <div>
-                <p className="text-xs font-semibold text-slate-800">Need the standard CSV format?</p>
+                <p className="text-xs font-semibold text-slate-800">Need the standard spreadsheet format?</p>
                 <p className="text-[11px] text-slate-500">
-                  Headers: question_type, question_text, option_a, option_b, option_c, option_d, correct_answers, positive_marks, negative_marks
+                  Headers: question_type, difficulty, question_text, option_a, option_b, option_c, option_d, correct_answers, positive_marks, negative_marks
                 </p>
               </div>
             </div>
@@ -161,7 +161,7 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
           {/* File Upload Zone */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Select Question CSV File (Max 2MB, up to 200 questions)
+              Select Question Spreadsheet (CSV or .xlsx, Max 2MB, up to 200 questions)
             </label>
             <div
               onClick={() => fileInputRef.current?.click()}
@@ -170,7 +170,7 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -185,9 +185,9 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
               ) : (
                 <div>
                   <p className="text-xs font-medium text-slate-700">
-                    Click to select or drag and drop your CSV file here
+                    Click to select or drag and drop your CSV or Excel (.xlsx) file here
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">UTF-8 or UTF-8 BOM CSV format</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Supports UTF-8 CSV and genuine Excel (.xlsx) workbooks</p>
                 </div>
               )}
             </div>

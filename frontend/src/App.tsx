@@ -11,6 +11,8 @@ import { RequireRole } from './components/auth/RequireRole'
 import { StudentPortalPlaceholder } from './pages/StudentPortalPlaceholder'
 import { TeacherPortalPlaceholder } from './pages/TeacherPortalPlaceholder'
 import { QuestionBank } from './pages/teacher/QuestionBank'
+import { QuizList } from './pages/teacher/QuizList'
+import { QuizBuilder } from './pages/teacher/QuizBuilder'
 
 export const App: React.FC = () => {
   return (
@@ -46,6 +48,22 @@ export const App: React.FC = () => {
               element={
                 <RequireRole allowedRoles={['teacher', 'admin']}>
                   <QuestionBank />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/teacher/quizzes"
+              element={
+                <RequireRole allowedRoles={['teacher', 'admin']}>
+                  <QuizList />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/teacher/quizzes/:quizId"
+              element={
+                <RequireRole allowedRoles={['teacher', 'admin']}>
+                  <QuizBuilder />
                 </RequireRole>
               }
             />

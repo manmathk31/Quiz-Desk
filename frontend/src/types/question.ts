@@ -1,8 +1,9 @@
 /**
- * Types and interfaces for Teacher Question Bank & CSV Import (DEC-006).
+ * Types and interfaces for Teacher Question Bank & CSV/XLSX Import (DEC-006, Milestone 4B).
  */
 
 export type QuestionType = 'single_choice' | 'multiple_choice' | 'true_false'
+export type QuestionDifficulty = 'easy' | 'medium' | 'hard'
 
 export interface QuestionOption {
   id: string
@@ -21,6 +22,7 @@ export interface Question {
   id: string
   created_by_id: string | null
   question_type: QuestionType
+  difficulty: QuestionDifficulty
   prompt: string
   positive_marks: number
   negative_marks: number
@@ -39,6 +41,7 @@ export interface QuestionListResponse {
 
 export interface QuestionCreatePayload {
   question_type: QuestionType
+  difficulty: QuestionDifficulty
   prompt: string
   positive_marks: number
   negative_marks: number
@@ -60,6 +63,7 @@ export interface ParsedOption {
 export interface ParsedQuestion {
   row_number: number
   question_type: QuestionType
+  difficulty: QuestionDifficulty
   prompt: string
   positive_marks: number
   negative_marks: number

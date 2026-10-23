@@ -37,14 +37,31 @@ export const TeacherPortalPlaceholder: React.FC = () => {
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-blue-900 group-hover:text-blue-700">
-                Question Bank & CSV Import
+                Question Bank & Import
               </span>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-200 text-blue-800">
                 Live
               </span>
             </div>
             <p className="text-xs text-slate-600">
-              Create, edit, search, and bulk-import reusable questions from CSV files with line-by-line validation.
+              Create, edit, search, and bulk-import reusable questions from CSV or Excel files with line-by-line validation.
+            </p>
+          </a>
+
+          <a
+            href="/teacher/quizzes"
+            className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 hover:border-indigo-300 transition-colors block text-left group"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-indigo-900 group-hover:text-indigo-700">
+                Quiz Builder & Publishing
+              </span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                Milestone 4B
+              </span>
+            </div>
+            <p className="text-xs text-slate-600">
+              Draft quizzes, clone questions from bank, configure proctoring & time limits, and publish immutable version snapshots.
             </p>
           </a>
         </div>

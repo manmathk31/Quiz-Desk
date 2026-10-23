@@ -1,11 +1,13 @@
-"""CSV parsing and validation engine for Question Bank imports (DEC-006)."""
+"""CSV and XLSX spreadsheet parsing and validation engine for Question Bank imports (DEC-006, Milestone 4B)."""
 from dataclasses import dataclass, field
 import csv
 import io
 import re
 from typing import List, Optional, Set, Tuple
 
-from app.models.question import QuestionType
+import openpyxl
+
+from app.models.question import QuestionType, QuestionDifficulty
 
 # Bounded import limits
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
@@ -26,7 +28,7 @@ REQUIRED_CSV_HEADERS = [
 
 @dataclass
 class ParsedOption:
-    """Option candidate extracted from CSV."""
+    """Option candidate extracted from CSV / spreadsheet."""
     option_text: str
     order_index: int
     is_correct: bool
@@ -34,9 +36,10 @@ class ParsedOption:
 
 @dataclass
 class ParsedQuestion:
-    """Question candidate extracted and validated from CSV row."""
+    """Question candidate extracted and validated from CSV / spreadsheet row."""
     row_number: int
     question_type: QuestionType
+    difficulty: QuestionDifficulty
     prompt: str
     positive_marks: float
     negative_marks: float
@@ -53,7 +56,7 @@ class CSVRowError:
 
 @dataclass
 class CSVValidationResult:
-    """Overall result of parsing and validating an uploaded CSV file."""
+    """Overall result of parsing and validating an uploaded CSV/XLSX file."""
     is_valid: bool
     total_rows: int
     valid_count: int
@@ -63,20 +66,37 @@ class CSVValidationResult:
 
 
 def normalize_header(header: str) -> str:
-    """Clean and normalize CSV header string."""
+    """Clean and normalize CSV / spreadsheet header string."""
     return header.strip().lower().replace(" ", "_")
+
+
+def _cell_to_str(val: object) -> str:
+    """Safely convert cell value from Excel or CSV into stripped string."""
+    if val is None:
+        return ""
+    if isinstance(val, bool):
+        return "True" if val else "False"
+    if isinstance(val, float):
+        # Format whole floats nicely (e.g. 2.0 -> "2.0")
+        return f"{val:g}" if val.is_integer() else str(val)
+    if isinstance(val, int):
+        return str(val)
+    return str(val).strip()
 
 
 def parse_and_validate_question_csv(
     file_content: bytes | str,
+    filename: Optional[str] = None,
 ) -> CSVValidationResult:
     """
-    Parse and validate a teacher's Question Bank CSV upload.
+    Parse and validate a teacher's Question Bank CSV or XLSX upload.
 
     Enforces:
-    - Safe UTF-8 decoding with automatic BOM stripping (utf-8-sig).
+    - Safe UTF-8 decoding for CSV with automatic BOM stripping (utf-8-sig).
+    - Genuine Excel .xlsx workbook parsing via openpyxl with read_only protection.
     - File size limit (2MB) and row count limit (200 rows).
     - Required headers presence.
+    - Difficulty level validation ('easy', 'medium', 'hard') defaulting to 'medium'.
     - Type-specific option counts, correctness rules, and duplicate checks.
     - True/False option structure and answer key normalization.
     - Strict non-negative and positive mark validation.
@@ -101,10 +121,61 @@ def parse_and_validate_question_csv(
                     )
                 ],
             )
+
+    # 2. Determine file format (.xlsx vs .csv)
+    is_xlsx = False
+    if isinstance(file_content, bytes):
+        if file_content.startswith(b"PK\x03\x04") or (filename and filename.lower().endswith(".xlsx")):
+            is_xlsx = True
+
+    raw_headers: List[str] = []
+    data_rows: List[List[str]] = []
+
+    if is_xlsx and isinstance(file_content, bytes):
         try:
-            # utf-8-sig automatically removes the UTF-8 Byte Order Mark (BOM) if present
-            decoded_text = file_content.decode("utf-8-sig")
-        except UnicodeDecodeError:
+            wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
+            sheet = wb.active
+            if sheet is None:
+                wb.close()
+                return CSVValidationResult(
+                    is_valid=False,
+                    total_rows=0,
+                    valid_count=0,
+                    error_count=1,
+                    errors=[
+                        CSVRowError(
+                            row_number=0,
+                            column="file",
+                            message="Excel workbook has no active sheet.",
+                        )
+                    ],
+                )
+
+            row_iter = sheet.iter_rows(values_only=True)
+            header_row = next(row_iter, None)
+            if header_row is None:
+                wb.close()
+                return CSVValidationResult(
+                    is_valid=False,
+                    total_rows=0,
+                    valid_count=0,
+                    error_count=1,
+                    errors=[
+                        CSVRowError(
+                            row_number=1,
+                            column="header",
+                            message="Excel sheet is empty.",
+                        )
+                    ],
+                )
+
+            raw_headers = [_cell_to_str(c) for c in header_row if c is not None]
+            for row in row_iter:
+                row_strs = [_cell_to_str(c) for c in row]
+                data_rows.append(row_strs)
+
+            wb.close()
+        except Exception as e:
             return CSVValidationResult(
                 is_valid=False,
                 total_rows=0,
@@ -114,35 +185,72 @@ def parse_and_validate_question_csv(
                     CSVRowError(
                         row_number=0,
                         column="file",
-                        message="File is not valid UTF-8 text. Please save your file as UTF-8 CSV.",
+                        message=f"Failed to read Excel workbook: {str(e)}",
                     )
                 ],
             )
     else:
-        decoded_text = file_content.lstrip("\ufeff")
-
-    if not decoded_text.strip():
-        return CSVValidationResult(
-            is_valid=False,
-            total_rows=0,
-            valid_count=0,
-            error_count=1,
-            errors=[
-                CSVRowError(
-                    row_number=0,
-                    column="file",
-                    message="CSV file is empty.",
+        # CSV parsing branch
+        if isinstance(file_content, bytes):
+            try:
+                # utf-8-sig automatically removes the UTF-8 Byte Order Mark (BOM) if present
+                decoded_text = file_content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                return CSVValidationResult(
+                    is_valid=False,
+                    total_rows=0,
+                    valid_count=0,
+                    error_count=1,
+                    errors=[
+                        CSVRowError(
+                            row_number=0,
+                            column="file",
+                            message="File is not valid UTF-8 text. Please save your file as UTF-8 CSV.",
+                        )
+                    ],
                 )
-            ],
-        )
+        else:
+            decoded_text = file_content.lstrip("\ufeff")
 
-    # 2. Parse CSV rows
-    stream = io.StringIO(decoded_text)
-    reader = csv.reader(stream)
+        if not decoded_text.strip():
+            return CSVValidationResult(
+                is_valid=False,
+                total_rows=0,
+                valid_count=0,
+                error_count=1,
+                errors=[
+                    CSVRowError(
+                        row_number=0,
+                        column="file",
+                        message="CSV file is empty.",
+                    )
+                ],
+            )
 
-    try:
-        raw_headers = next(reader, None)
-    except Exception as e:
+        stream = io.StringIO(decoded_text)
+        reader = csv.reader(stream)
+        try:
+            first_row = next(reader, None)
+            if first_row:
+                raw_headers = [c.strip() for c in first_row]
+            for r in reader:
+                data_rows.append([c.strip() for c in r])
+        except Exception as e:
+            return CSVValidationResult(
+                is_valid=False,
+                total_rows=0,
+                valid_count=0,
+                error_count=1,
+                errors=[
+                    CSVRowError(
+                        row_number=1,
+                        column="header",
+                        message=f"Failed to read CSV headers: {str(e)}",
+                    )
+                ],
+            )
+
+    if not raw_headers or not any(h for h in raw_headers):
         return CSVValidationResult(
             is_valid=False,
             total_rows=0,
@@ -152,22 +260,7 @@ def parse_and_validate_question_csv(
                 CSVRowError(
                     row_number=1,
                     column="header",
-                    message=f"Failed to read CSV headers: {str(e)}",
-                )
-            ],
-        )
-
-    if not raw_headers:
-        return CSVValidationResult(
-            is_valid=False,
-            total_rows=0,
-            valid_count=0,
-            error_count=1,
-            errors=[
-                CSVRowError(
-                    row_number=1,
-                    column="header",
-                    message="CSV header row is missing or empty.",
+                    message="Spreadsheet header row is missing or empty.",
                 )
             ],
         )
@@ -197,8 +290,8 @@ def parse_and_validate_question_csv(
 
     # 3. Process data rows
     row_count = 0
-    for row_idx, row in enumerate(reader, start=2):
-        # Ignore completely empty lines at end or middle of CSV
+    for row_idx, row in enumerate(data_rows, start=2):
+        # Ignore completely empty lines at end or middle of spreadsheet
         if not any(cell.strip() for cell in row):
             continue
 
@@ -230,6 +323,7 @@ def parse_and_validate_question_csv(
         correct_raw = get_col("correct_answers")
         pos_marks_raw = get_col("positive_marks")
         neg_marks_raw = get_col("negative_marks")
+        raw_difficulty = get_col("difficulty").lower()
 
         # Validate question prompt
         if not prompt:
@@ -257,6 +351,24 @@ def parse_and_validate_question_csv(
                     message=f"Invalid question type '{raw_type}'. Supported: 'single_choice', 'multiple_choice', 'true_false'",
                 )
             )
+
+        # Validate difficulty level
+        difficulty = QuestionDifficulty.MEDIUM
+        if raw_difficulty:
+            if raw_difficulty in ("easy", "e"):
+                difficulty = QuestionDifficulty.EASY
+            elif raw_difficulty in ("medium", "med", "m"):
+                difficulty = QuestionDifficulty.MEDIUM
+            elif raw_difficulty in ("hard", "difficult", "h"):
+                difficulty = QuestionDifficulty.HARD
+            else:
+                row_errors.append(
+                    CSVRowError(
+                        row_number=row_idx,
+                        column="difficulty",
+                        message=f"Invalid difficulty '{raw_difficulty}'. Supported: 'easy', 'medium', 'hard'",
+                    )
+                )
 
         # Validate marks
         positive_marks = 1.00
@@ -320,7 +432,6 @@ def parse_and_validate_question_csv(
             tf_opt_b = opt_b if opt_b else "False"
 
             # Parse correct answer for True/False
-            # Acceptable representations: A, B, TRUE, FALSE, T, F
             norm_correct = correct_raw.upper().replace(" ", "")
             correct_choice: Optional[str] = None
             if norm_correct in ("A", "TRUE", "T"):
@@ -383,11 +494,9 @@ def parse_and_validate_question_csv(
 
             # Duplicate option texts check
             seen_texts: Set[str] = set()
-            has_duplicates = False
             for letter, opt_text in candidate_options:
                 normalized_text = opt_text.lower()
                 if normalized_text in seen_texts:
-                    has_duplicates = True
                     row_errors.append(
                         CSVRowError(
                             row_number=row_idx,
@@ -400,7 +509,6 @@ def parse_and_validate_question_csv(
             available_letters = {letter for letter, _ in candidate_options}
 
             # Parse correct answers key
-            # Allow delimiter: comma, space, semicolon
             if not correct_raw:
                 row_errors.append(
                     CSVRowError(
@@ -446,15 +554,14 @@ def parse_and_validate_question_csv(
                             message=f"Single-choice question cannot have multiple correct answers (found {sorted(correct_letters)}). Use 'multiple_choice' instead.",
                         )
                     )
-                elif len(correct_letters) == 0:
-                    if correct_raw:  # already handled if empty
-                        row_errors.append(
-                            CSVRowError(
-                                row_number=row_idx,
-                                column="correct_answers",
-                                message="Must specify exactly one correct answer (e.g. 'A').",
-                            )
+                elif len(correct_letters) == 0 and correct_raw:
+                    row_errors.append(
+                        CSVRowError(
+                            row_number=row_idx,
+                            column="correct_answers",
+                            message="Must specify exactly one correct answer (e.g. 'A').",
                         )
+                    )
 
             elif question_type == QuestionType.MULTIPLE_CHOICE:
                 if len(correct_letters) == 0 and correct_raw:
@@ -483,6 +590,7 @@ def parse_and_validate_question_csv(
                 ParsedQuestion(
                     row_number=row_idx,
                     question_type=question_type,
+                    difficulty=difficulty,
                     prompt=prompt,
                     positive_marks=positive_marks,
                     negative_marks=negative_marks,
@@ -495,7 +603,7 @@ def parse_and_validate_question_csv(
             CSVRowError(
                 row_number=1,
                 column="file",
-                message="CSV contains headers but no question data rows.",
+                message="File contains headers but no question data rows.",
             )
         )
 

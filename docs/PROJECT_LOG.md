@@ -386,13 +386,55 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Built `frontend/src/pages/teacher/QuestionModal.tsx`: Dynamic option builder, radio/checkbox answer toggles, and form validation.
   - Built `frontend/src/pages/teacher/CsvImportModal.tsx`: Drag & drop upload, sample template downloader, live validation preview summary, row-level error table, and confirmation step.
   - Mounted `/teacher/question-bank` route in `frontend/src/App.tsx` and linked from `Header.tsx` and `TeacherPortalPlaceholder.tsx`.
+### 2026-10-23: Phase 4 - Milestone 4B: Teacher Quiz Builder, Immutable Publishing & Difficulty Support
+- **Context & Objectives**:
+  - Implemented the complete teacher-facing assessment authoring lifecycle: quiz drafting, detailed settings configuration, question selection from the question bank via deep-copy isolation, question reordering and removal, pre-publication validation & preview, and immutable snapshot publishing.
+  - Implemented end-to-end question difficulty classification (`easy`, `medium`, `hard`) with a safe migration, backward-compatible defaults, UI badges, and spreadsheet validation.
+  - Added dual spreadsheet ingestion support: accepting both genuine Microsoft Excel (`.xlsx`) workbooks and UTF-8 `.csv` files.
+- **Action**: Data Model & Migration (DEC-016, DEC-017)
+  - Created `QuestionDifficulty(str, enum.Enum)` (`easy`, `medium`, `hard`) in `backend/app/models/question.py`.
+  - Added indexed column `difficulty` with server default `'medium'` and check constraint `ck_question_difficulty_enum`.
+  - Generated migration `backend/alembic/versions/0004_question_difficulty.py` (`0004_question_difficulty` down to `0003_question_bank`).
+  - Tested migration chain: verified `0004_question_difficulty -> 0003_question_bank -> 0002_integrity -> 0001_initial_schema`. Verified offline static SQL generation for upgrade and downgrade.
+- **Action**: Dual-Format Spreadsheet Ingestion (.CSV and .XLSX)
+  - Pinned `openpyxl==3.1.5` in `backend/requirements.txt`.
+  - Upgraded `backend/app/services/csv_parser.py`:
+    - Auto-detects file format via MIME type and file extension (`.csv` vs `.xlsx`).
+    - Uses `openpyxl.load_workbook(data_only=True)` to parse `.xlsx` workbooks securely with row/byte limits (max 200 rows, max 2MB).
+    - Preserves full CSV parsing with automatic UTF-8 BOM stripping (`utf-8-sig`).
+    - Parses and normalizes `difficulty` column (case-insensitive).
+    - Backward-compatible default: if `difficulty` column is omitted, defaults cleanly to `medium`.
+    - If `difficulty` column is present with invalid text (e.g. `'extreme'`), raises actionable row-level error.
+- **Action**: Authenticated Quiz API (DEC-017)
+  - Created schemas in `backend/app/schemas/quiz.py` (`QuizCreateRequest`, `QuizUpdateRequest`, `QuizDetailResponse`, `QuizPreviewResponse`, `PublishQuizResponse`, `AddQuestionsFromBankRequest`, `ReorderQuestionsRequest`, etc.).
+  - Created endpoints in `backend/app/api/v1/endpoints/quizzes.py`:
+    - `GET /api/v1/quizzes`: List quizzes owned by authenticated teacher with version and draft/published indicators.
+    - `POST /api/v1/quizzes`: Create draft quiz and initial `QuizVersion` (version 1, `is_published=False`).
+    - `GET /api/v1/quizzes/{id}`: Detailed quiz view including full question list with options and difficulty breakdown.
+    - `PUT /api/v1/quizzes/{id}`: Update assessment settings (schedules, duration, attempts, navigation, shuffling, multi-answer policy, tab-switch thresholds). If current version is already published, automatically forks a new draft version.
+    - `POST /api/v1/quizzes/{id}/questions`: Add bank questions to draft via deep-copy cloning (ensuring bank edits never alter quiz versions).
+    - `DELETE /api/v1/quizzes/{id}/questions/{qid}`: Remove question from draft version.
+    - `PUT /api/v1/quizzes/{id}/questions/order`: Reorder question sequence numbers atomically.
+    - `GET /api/v1/quizzes/{id}/preview`: Pre-publication preview checking criteria (min 1 question, option completeness, schedule validity) and returning validation flags.
+    - `POST /api/v1/quizzes/{id}/publish`: Transaction-safe publishing transition (`is_published=True`). Rejects invalid or empty quizzes.
+  - Enforced `require_faculty` role guard (rejects students with 403 Forbidden) and multi-tenant isolation (404 on accessing quizzes owned by another teacher).
+- **Action**: Frontend Quiz Builder & Publishing UI
+  - Created `frontend/src/types/quiz.ts` and `frontend/src/services/quizApi.ts`.
+  - Built `frontend/src/pages/teacher/QuizList.tsx`: Grid/table of teacher quizzes with status badges (Draft / Published), version numbers, question counts, marks, search, and a "Create Quiz" modal.
+  - Built `frontend/src/pages/teacher/QuizBuilder.tsx`: Comprehensive split-screen quiz authoring workspace:
+    - Left column: Assessment settings editor (schedule window, duration, attempt limit, backtracking, shuffling, multi-answer scoring policy, tab-switch warning & penalty configuration).
+    - Right column: Question manager with live question count, total marks, difficulty badges, drag/up/down reordering, removal, and "Add Questions from Bank" modal trigger.
+  - Built `frontend/src/pages/teacher/QuestionSelectorModal.tsx`: Searchable question bank browser with difficulty and type filters and batch selection.
+  - Built `frontend/src/pages/teacher/QuizPreviewModal.tsx`: Pre-publication readiness checklist, metrics summary, and publish confirmation warning explaining version immutability.
+  - Updated `frontend/src/pages/teacher/QuestionBank.tsx`, `QuestionModal.tsx`, and `CsvImportModal.tsx` to display and edit difficulty levels and accept `.xlsx` files.
+  - Mounted `/teacher/quizzes` and `/teacher/quizzes/:quizId` routes in `frontend/src/App.tsx` and updated `Header.tsx`.
 - **Action**: Comprehensive Testing & Verification
-  - Created `backend/tests/test_csv_parser.py`: 11 unit tests covering BOM, missing headers, empty files, malformed rows, duplicate options, invalid types, mark checks, and limits.
-  - Created `backend/tests/test_question_bank_api.py`: 9 integration tests covering teacher CRUD, cross-teacher isolation, student role denial (403), template download, dry-run preview, and all-or-nothing rollback.
-  - Updated `backend/tests/test_models.py` migration chain test for `0003_question_bank`.
-  - Ran full backend pytest suite: all 58 tests passed in 2.13s.
-  - Ran frontend linter (`oxlint`): 0 errors across 23 files.
-  - Ran frontend production build (`npm run build`): passed in 660ms with 0 errors.
+  - Created `backend/tests/test_quizzes_api.py` with 9 integration tests covering auth denial (401/403), cross-teacher isolation (404), draft lifecycle, invalid schedule rejection, bank question cloning & difficulty preservation, question reordering & removal, empty quiz publish rejection, and immutable version locking with draft forking.
+  - Extended `backend/tests/test_csv_parser.py` to 15 unit tests covering genuine `.xlsx` generation, parsing, corrupt workbook rejection, difficulty validation, and defaults.
+  - Extended `backend/tests/test_models.py` migration chain to verify head `0004_question_difficulty`.
+  - Ran full backend pytest suite: all 71 tests passed in 4.12s.
+  - Ran frontend linter (`oxlint`): 0 errors across 27 files.
+  - Ran frontend production build (`npm run build`): passed in 709ms with 0 errors.
 
 ---
 
@@ -415,21 +457,22 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `.\.venv\Scripts\pip.exe install -r backend/requirements.txt` | `d:\ANUP\Quizdesk` | 0 | Installed all pinned packages into root `.venv`. |
 | `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
 | `.\.venv\Scripts\pip.exe install python-multipart==0.0.20` | `d:\ANUP\Quizdesk` | 0 | Installed python-multipart for file upload parsing. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `58 passed in 2.13s` (all model, migration, auth, profile, CORS, CSV parser, and question bank tests passing). |
+| `.\.venv\Scripts\pip.exe install openpyxl==3.1.5` | `d:\ANUP\Quizdesk` | 0 | Installed openpyxl for genuine Excel workbook support. |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `71 passed in 4.12s` (all models, migrations, auth, profile, CORS, CSV & Excel parser, question bank, and quiz builder tests passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm install @supabase/supabase-js` | `d:\ANUP\Quizdesk\frontend` | 0 | Added Supabase browser client with 0 vulnerabilities. |
-| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 23 files. |
-| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 660ms. |
-| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank (head)`. |
-| `alembic -c backend/alembic.ini upgrade 0002_integrity:0003_question_bank --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for teacher question bank schema. |
-| `alembic -c backend/alembic.ini downgrade 0003_question_bank:0002_integrity --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0003. |
+| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 27 files. |
+| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 709ms. |
+| `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank -> 0004_question_difficulty (head)`. |
+| `alembic -c backend/alembic.ini upgrade 0003_question_bank:0004_question_difficulty --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for difficulty column, index, and check constraint. |
+| `alembic -c backend/alembic.ini downgrade 0004_question_difficulty:0003_question_bank --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0004. |
 
 ---
 
 ## 6. Dependencies Added / Removed
 - Added backend dependencies pinned in [`backend/requirements.txt`](file:///d:/ANUP/Quizdesk/backend/requirements.txt):
-  - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pyjwt==2.10.1`, `python-multipart==0.0.20`, `pytest`, `pytest-asyncio`, `httpx`.
+  - `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pyjwt==2.10.1`, `python-multipart==0.0.20`, `openpyxl==3.1.5`, `pytest`, `pytest-asyncio`, `httpx`.
 - Added frontend dependencies in [`frontend/package.json`](file:///d:/ANUP/Quizdesk/frontend/package.json):
   - Runtime: `@supabase/supabase-js`, `react`, `react-dom`, `react-router-dom`, `lucide-react`.
   - Development: `tailwindcss`, `@tailwindcss/vite`, `vite`, `typescript`, `@types/react`, `@types/react-dom`, `oxlint`.
@@ -439,37 +482,39 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV Parser, Question Bank API)**:
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `58 passed in 2.13s`.
+  - Results: `71 passed in 4.12s`.
 - **Frontend Linter & Production Build Verification**:
-  - Executed: `npm run lint` (oxlint): 0 errors across 23 files.
-  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2000 modules transformed in 660ms.
+  - Executed: `npm run lint` (oxlint): 0 errors across 27 files.
+  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2038 modules transformed in 709ms.
 - **Alembic Offline Migration Checks**:
-  - Verified `upgrade 0002_integrity:0003_question_bank --sql` and `downgrade 0003_question_bank:0002_integrity --sql`.
+  - Verified `upgrade 0003_question_bank:0004_question_difficulty --sql` and `downgrade 0004_question_difficulty:0003_question_bank --sql`.
 
 ---
 
 ## 8. Known Issues, Risks & Unresolved Questions
 
 ### Known Risks & Modeling Trade-Offs:
-1. **Reusable vs Versioned Question Partitioning**: Reusable questions have `quiz_version_id IS NULL` and `created_by_id = teacher.id`. When questions are incorporated into a published quiz version (Phase 4B), they are cloned into immutable version-attached questions (`quiz_version_id = version.id`), guaranteeing edits to the bank never alter published quizzes or past attempts.
-2. **Offline Local Development**: When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are not provided in `frontend/.env.local`, the frontend loads gracefully without crashing, displaying configuration notices on protected pages.
+1. **Question Bank Isolation via Deep Copy**: Reusable bank questions are cloned with their options when added to a quiz version. Bank updates do not propagate to quizzes, preserving historical assessment integrity.
+2. **Published Quiz Mutability**: Modifying settings or questions on a published quiz automatically branches a new draft `QuizVersion`, leaving previous versions and student attempts attached to their original frozen snapshot.
+3. **High-Concurrency Load Simulation**: Actual simultaneous 50+ student exam load testing is reserved for Phase 8 against a deployed PostgreSQL environment.
 
 ### Unresolved Questions / Future Confirmations:
-- Live Supabase project URL and anon/service keys to be provided in `.env.local` and `.env` prior to live staging.
+- Live Supabase project credentials to be provided in `.env.local` and `.env` prior to staging deployment.
 
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All changes strictly adhere to DEC-001, DEC-006, DEC-013, and DEC-015.
+- **None**: All changes strictly adhere to DEC-001 through DEC-017.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-402`: Quiz builder & manual question CRUD endpoints**
-- Implement quiz drafting, adding questions from the question bank into a quiz, setting question order and weights, and updating quiz scheduling windows.
+**Task**: **`TASK-501`: Student roster CSV upload & validation API (Phase 5)**
+- Implement student CSV roster ingestion and validation (`prn,name,email,division`), duplicate rejection, and per-quiz assignment access control.
+
 
 
 

@@ -9,6 +9,7 @@ from app.models import (
     QuizStatus,
     MultiAnswerPolicy,
     QuestionType,
+    QuestionDifficulty,
     AttemptStatus,
     GradingStatus,
 )
@@ -70,6 +71,7 @@ def test_unique_constraints_and_foreign_keys():
     q_constraints = {c.name for c in tables["questions"].constraints}
     assert "ck_question_positive_marks" in q_constraints
     assert "ck_question_negative_marks" in q_constraints
+    assert "difficulty" in tables["questions"].columns
 
     # QuizAttempt constraints
     attempt_constraints = {c.name for c in tables["quiz_attempts"].constraints}
@@ -85,6 +87,7 @@ def test_enum_specifications():
     assert set(QuizStatus) == {"draft", "published", "closed", "archived"}
     assert set(MultiAnswerPolicy) == {"all_or_nothing", "partial_with_penalty", "partial_no_penalty"}
     assert set(QuestionType) == {"single_choice", "multiple_choice", "true_false"}
+    assert set(QuestionDifficulty) == {"easy", "medium", "hard"}
     assert set(AttemptStatus) == {"in_progress", "submitted", "expired", "cancelled"}
     assert set(GradingStatus) == {"pending", "auto_graded", "manually_adjusted"}
 
@@ -99,7 +102,11 @@ def test_alembic_migration_chain():
 
     heads = script.get_heads()
     assert len(heads) == 1
-    assert heads[0] == "0003_question_bank"
+    assert heads[0] == "0004_question_difficulty"
+
+    rev4 = script.get_revision("0004_question_difficulty")
+    assert rev4 is not None
+    assert rev4.down_revision == "0003_question_bank"
 
     rev3 = script.get_revision("0003_question_bank")
     assert rev3 is not None

@@ -2,7 +2,7 @@
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.user import User, StudentProfile, UserRole
 from app.models.quiz import Quiz, QuizVersion, QuizStatus, MultiAnswerPolicy
-from app.models.question import Question, QuestionOption, QuestionType
+from app.models.question import Question, QuestionOption, QuestionType, QuestionDifficulty
 from app.models.roster import QuizAssignment
 from app.models.attempt import (
     QuizAttempt,
@@ -27,6 +27,7 @@ __all__ = [
     "Question",
     "QuestionOption",
     "QuestionType",
+    "QuestionDifficulty",
     "QuizAssignment",
     "QuizAttempt",
     "AttemptAnswer",

@@ -23,6 +23,7 @@ export async function fetchQuestionBank(
     page?: number
     page_size?: number
     question_type?: string
+    difficulty?: string
     search?: string
   } = {}
 ): Promise<QuestionListResponse> {
@@ -30,6 +31,7 @@ export async function fetchQuestionBank(
   if (params.page) query.set('page', params.page.toString())
   if (params.page_size) query.set('page_size', params.page_size.toString())
   if (params.question_type) query.set('question_type', params.question_type)
+  if (params.difficulty) query.set('difficulty', params.difficulty)
   if (params.search) query.set('search', params.search)
 
   const url = `${API_BASE_URL}/api/v1/question-bank?${query.toString()}`

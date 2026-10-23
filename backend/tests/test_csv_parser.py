@@ -222,3 +222,130 @@ def test_row_limit_enforcement():
     res = parse_and_validate_question_csv(csv_text)
     assert res.is_valid is False
     assert any("exceeded maximum row limit" in e.message.lower() for e in res.errors)
+
+
+def test_difficulty_parsing_and_defaults():
+    """Verify difficulty level parsing, case insensitivity, and safe default."""
+    from app.models.question import QuestionDifficulty
+
+    csv_with_diff = (
+        "question_type,difficulty,question_text,option_a,option_b,option_c,option_d,correct_answers,positive_marks,negative_marks\n"
+        'single_choice,easy,"Easy Question",A,B,,,A,1.0,0.0\n'
+        'single_choice,MEDIUM,"Medium Question",A,B,,,A,1.0,0.0\n'
+        'single_choice,Hard,"Hard Question",A,B,,,A,1.0,0.0\n'
+        'single_choice,,"Blank Difficulty Question",A,B,,,A,1.0,0.0\n'
+    )
+    res = parse_and_validate_question_csv(csv_with_diff)
+    assert res.is_valid is True
+    assert res.valid_count == 4
+    assert res.questions[0].difficulty == QuestionDifficulty.EASY
+    assert res.questions[1].difficulty == QuestionDifficulty.MEDIUM
+    assert res.questions[2].difficulty == QuestionDifficulty.HARD
+    assert res.questions[3].difficulty == QuestionDifficulty.MEDIUM
+
+    # Backward compatibility: CSV without difficulty column defaults to medium
+    csv_no_diff = (
+        "question_type,question_text,option_a,option_b,option_c,option_d,correct_answers,positive_marks,negative_marks\n"
+        'single_choice,"Legacy Question",A,B,,,A,1.0,0.0\n'
+    )
+    res_legacy = parse_and_validate_question_csv(csv_no_diff)
+    assert res_legacy.is_valid is True
+    assert res_legacy.questions[0].difficulty == QuestionDifficulty.MEDIUM
+
+
+def test_invalid_difficulty_rejection():
+    """Verify that unrecognized difficulty strings are rejected with row-level errors."""
+    csv_invalid_diff = (
+        "question_type,difficulty,question_text,option_a,option_b,option_c,option_d,correct_answers,positive_marks,negative_marks\n"
+        'single_choice,extreme,"Extreme Question",A,B,,,A,1.0,0.0\n'
+    )
+    res = parse_and_validate_question_csv(csv_invalid_diff)
+    assert res.is_valid is False
+    assert any("invalid difficulty 'extreme'" in e.message.lower() for e in res.errors)
+    assert any(e.column == "difficulty" for e in res.errors)
+
+
+def test_parse_valid_xlsx_workbook():
+    """Verify genuine Excel .xlsx parsing via openpyxl."""
+    import io
+    import openpyxl
+    from app.models.question import QuestionDifficulty, QuestionType
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Questions"
+
+    # Header row
+    ws.append([
+        "question_type",
+        "difficulty",
+        "question_text",
+        "option_a",
+        "option_b",
+        "option_c",
+        "option_d",
+        "correct_answers",
+        "positive_marks",
+        "negative_marks",
+    ])
+    # Data row 1
+    ws.append([
+        "single_choice",
+        "hard",
+        "What is the binary representation of 10?",
+        "1010",
+        "1100",
+        "1001",
+        "1111",
+        "A",
+        2.5,
+        0.5,
+    ])
+    # Data row 2 (True/False)
+    ws.append([
+        "true_false",
+        "easy",
+        "RAM is non-volatile memory.",
+        "True",
+        "False",
+        "",
+        "",
+        "B",
+        1.0,
+        0.0,
+    ])
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    xlsx_bytes = bio.getvalue()
+
+    result = parse_and_validate_question_csv(xlsx_bytes, filename="questions.xlsx")
+    assert result.is_valid is True
+    assert result.total_rows == 2
+    assert result.valid_count == 2
+    assert result.error_count == 0
+
+    q1 = result.questions[0]
+    assert q1.question_type == QuestionType.SINGLE_CHOICE
+    assert q1.difficulty == QuestionDifficulty.HARD
+    assert q1.prompt == "What is the binary representation of 10?"
+    assert q1.positive_marks == 2.5
+    assert q1.negative_marks == 0.5
+    assert len(q1.options) == 4
+    assert q1.options[0].is_correct is True
+
+    q2 = result.questions[1]
+    assert q2.question_type == QuestionType.TRUE_FALSE
+    assert q2.difficulty == QuestionDifficulty.EASY
+    assert q2.prompt == "RAM is non-volatile memory."
+    assert q2.options[1].is_correct is True
+
+
+def test_corrupt_or_empty_xlsx_rejection():
+    """Verify proper error reporting on corrupt or empty Excel files."""
+    # File named .xlsx but contains arbitrary non-zip bytes
+    corrupt_bytes = b"Not really an excel file content"
+    res = parse_and_validate_question_csv(corrupt_bytes, filename="bad.xlsx")
+    assert res.is_valid is False
+    assert any("failed to read excel workbook" in e.message.lower() for e in res.errors)
+

@@ -19,6 +19,9 @@ psycopg[binary]==3.2.4
 pyjwt==2.10.1
 python-multipart==0.0.20
 
+# Document & Spreadsheet Processing
+openpyxl==3.1.5
+
 # Testing & Client
 pytest==8.3.4
 pytest-asyncio==0.25.3

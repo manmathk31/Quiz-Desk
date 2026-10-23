@@ -4,7 +4,7 @@ from typing import List, Optional
 import uuid
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.question import QuestionType
+from app.models.question import QuestionType, QuestionDifficulty
 
 
 # Option schemas
@@ -27,6 +27,9 @@ class QuestionOptionResponse(QuestionOptionBase):
 class QuestionCreateRequest(BaseModel):
     question_type: QuestionType = Field(
         QuestionType.SINGLE_CHOICE, description="Question type"
+    )
+    difficulty: QuestionDifficulty = Field(
+        QuestionDifficulty.MEDIUM, description="Difficulty level (easy, medium, hard)"
     )
     prompt: str = Field(..., min_length=1, description="Question prompt / statement")
     positive_marks: float = Field(1.0, gt=0, description="Marks awarded for correct answer")
@@ -74,6 +77,7 @@ class QuestionResponse(BaseModel):
     id: uuid.UUID
     created_by_id: Optional[uuid.UUID]
     question_type: QuestionType
+    difficulty: QuestionDifficulty
     prompt: str
     positive_marks: float
     negative_marks: float
@@ -92,7 +96,7 @@ class QuestionListResponse(BaseModel):
     total_pages: int
 
 
-# CSV Preview and Import Schemas
+# CSV / Spreadsheet Preview and Import Schemas
 class CSVRowErrorResponse(BaseModel):
     row_number: int
     column: Optional[str] = None
@@ -108,6 +112,7 @@ class ParsedOptionResponse(BaseModel):
 class ParsedQuestionResponse(BaseModel):
     row_number: int
     question_type: QuestionType
+    difficulty: QuestionDifficulty
     prompt: str
     positive_marks: float
     negative_marks: float
