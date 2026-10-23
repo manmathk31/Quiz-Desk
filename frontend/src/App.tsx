@@ -17,16 +17,28 @@ import { QuizList } from './pages/teacher/QuizList'
 import { QuizBuilder } from './pages/teacher/QuizBuilder'
 import { QuizResults } from './pages/teacher/QuizResults'
 
+import { StudentLogin } from './pages/auth/StudentLogin'
+import { TeacherLogin } from './pages/auth/TeacherLogin'
+import { TeacherForgotPassword } from './pages/auth/TeacherForgotPassword'
+import { TeacherResetPassword } from './pages/auth/TeacherResetPassword'
+import { AdminLogin } from './pages/auth/AdminLogin'
+import { AdminDashboard } from './pages/admin/AdminDashboard'
+
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Shell>
           <Routes>
-            {/* Public Institutional Information Routes */}
+            {/* Public Institutional Information & Portal Entry Routes */}
             <Route path="/" element={<Home />} />
             <Route path="/status" element={<Overview />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/student/login" element={<StudentLogin />} />
+            <Route path="/teacher/login" element={<TeacherLogin />} />
+            <Route path="/teacher/forgot-password" element={<TeacherForgotPassword />} />
+            <Route path="/teacher/reset-password" element={<TeacherResetPassword />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
 
             {/* Student Role-Protected Routes */}
@@ -95,6 +107,15 @@ export const App: React.FC = () => {
               }
             />
 
+            {/* Admin Operational Portal Route */}
+            <Route
+              path="/admin/dashboard"
+              element={
+                <RequireRole allowedRoles={['admin']}>
+                  <AdminDashboard />
+                </RequireRole>
+              }
+            />
 
             {/* Fallback 404 Route */}
             <Route path="*" element={<NotFound />} />

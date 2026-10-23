@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     SUPABASE_JWT_AUDIENCE: Optional[str] = "authenticated"
     SUPABASE_JWT_ISSUER: Optional[str] = None
 
+    # Operational & Deployment Environment (DEC-022)
+    ENVIRONMENT: str = "development"
+    ALLOW_DESTRUCTIVE_RESET: bool = False
+
+    # Administrator Provisioning (DEC-022)
+    ADMIN_EMAIL: Optional[str] = None
+    ADMIN_NAME: Optional[str] = "System Administrator"
+    ADMIN_BOOTSTRAP_TOKEN: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

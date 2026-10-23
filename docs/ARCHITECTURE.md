@@ -279,3 +279,44 @@ Quizdesk/
 |
 `-- e2e/                       # End-to-end integration tests (Playwright)
 ```
+
+---
+
+## 7. Administrative Operational Architecture & Guarded Reset Safeguards (Phase 8B)
+
+### 7.1 Separate Portal Entry Routes & Navigation Isolation
+The application maintains clear architectural separation between student and operational roles:
+- `/student/login`: Student Examination Portal entry. Points exclusively to `/student/portal`. Contains zero administrative or faculty navigation links.
+- `/teacher/login`: Faculty Assessment Portal entry with password recovery flow (`/teacher/forgot-password`). Points to `/teacher/quizzes`.
+- `/admin/login`: Restricted Operational Admin Portal entry with single administrator bootstrapping.
+- Client navigation shells (`Shell.tsx`, `Header.tsx`) render menu links strictly conditional on authoritative backend roles (`UserRole.ADMIN`, `UserRole.TEACHER`, `UserRole.STUDENT`).
+- Backend security boundary: Hidden client links are not a security mechanism. All endpoints mounted under `/api/v1/admin/*` mandate `require_admin` dependency; unauthenticated requests receive HTTP 401 and unauthorized roles receive HTTP 403.
+
+### 7.2 Server-Authoritative Administrator Provisioning
+- The initial administrator identity is configured strictly via server environment variables (`ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_BOOTSTRAP_TOKEN`).
+- Initial provisioning endpoint `POST /api/v1/admin/bootstrap`:
+  1. Validates the incoming Supabase JWT token.
+  2. Confirms `token.email.lower() == settings.ADMIN_EMAIL.lower()`.
+  3. Verifies `bootstrap_token == settings.ADMIN_BOOTSTRAP_TOKEN` if configured.
+  4. Upserts the record in `users` with `role = UserRole.ADMIN` and `is_active = True`.
+  5. Records an immutable `admin.bootstrap_provisioned` audit event.
+- Client metadata and self-signup requests are strictly untrusted and cannot grant administrative privileges.
+
+### 7.3 Guarded Test-Data Reset Safeguards
+To support reproducible development and QA rehearsal without endangering production data, the reset endpoint (`POST /api/v1/admin/reset-test-data`) enforces 7 consecutive security safeguards:
+1. **Disabled by default**: Gated by `settings.ALLOW_DESTRUCTIVE_RESET` (default `False`).
+2. **Blocked in production**: Rejects execution if `settings.ENVIRONMENT.lower() == "production"` with HTTP 403 Forbidden.
+3. **Role enforcement**: Requires authenticated user with `UserRole.ADMIN`.
+4. **Mandatory confirmation code**: Request body must provide explicit token `CONFIRM_DELETE_ALL_TEST_DATA`; any variation returns HTTP 400 Bad Request.
+5. **Transactional dependency ordering**: Executed inside a single atomic database transaction in foreign-key dependency order:
+   $$\text{AttemptAnswer} \rightarrow \text{AttemptTelemetryEvent} \rightarrow \text{GradeAdjustment} \rightarrow \text{QuizAttempt} \rightarrow \text{QuizAssignment} \rightarrow \text{ImportJob} \rightarrow \text{QuestionOption} \rightarrow \text{Question} \rightarrow \text{QuizVersion} \rightarrow \text{Quiz}$$
+6. **Account & Audit preservation**: User accounts (`User`) and audit history (`AuditEvent`) are strictly preserved.
+7. **Audit trail generation**: Writes a tamper-evident audit record documenting the environment, cleared record counts, and administrator identity.
+
+### 7.4 Cross-Teacher Roster Enrollment & Assignment Isolation
+- Roster records (`QuizAssignment`) are uniquely scoped per quiz: compound unique constraints `(quiz_id, student_prn)` and `(quiz_id, student_email)`.
+- Global enrollment is non-exclusive: Teacher A assigning Student X to Quiz A does not block Teacher B assigning Student X to Quiz B.
+- Same-quiz duplicate uploads are handled idempotently, updating metadata without creating duplicate assignment entities.
+- String preservation: PRNs are stored as strings (`String(64)`), strictly preserving leading zeros.
+- Mismatches between student account PRNs and roster rows are flagged as identity conflicts and rejected with HTTP 422 Unprocessable Entity.
+

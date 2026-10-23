@@ -98,6 +98,23 @@ export const Login: React.FC = () => {
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <Link
+          to="/student/login"
+          className="p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-center transition-colors"
+        >
+          <div className="text-xs font-bold text-blue-900">Student Portal</div>
+          <div className="text-[10px] text-blue-700 mt-0.5">Take Quizzes</div>
+        </Link>
+        <Link
+          to="/teacher/login"
+          className="p-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-center transition-colors"
+        >
+          <div className="text-xs font-bold text-indigo-900">Faculty Portal</div>
+          <div className="text-[10px] text-indigo-700 mt-0.5">Quizzes & Grading</div>
+        </Link>
+      </div>
+
       {!isConfigured && (
         <div className="mb-5 p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-slate-700">
           <div className="flex items-center space-x-2 text-amber-900 font-semibold mb-1">

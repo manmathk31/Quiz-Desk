@@ -125,21 +125,26 @@ This document tracks all implementation tasks for **Quizdesk**. Each task is ass
 
 ---
 
-## Phase 8: Testing, Security Verification & Concurrent Load Simulation
+## Phase 8B: Minimal Admin Portal, Guarded Test Reset, Teacher Password Recovery & Roster Verification
+**Goal**: Minimal, secure administrator portal, server-side single admin provisioning, guarded test-data reset utility, teacher password recovery via Supabase Auth, and cross-teacher roster verification.
+
+| Task ID | Task Title | Status | Dependencies | Acceptance Criteria |
+|---|---|---|---|---|
+| `TASK-801B` | Separate Portal Entry Points & Navigation Isolation | `Completed` | Phase 8A | - Dedicated entry points: `/student/login`, `/teacher/login`, and `/admin/login`.<br>- Student portal and navigation shell never display admin links, controls, or indicators.<br>- Admin APIs (`/api/v1/admin/*`) strictly protected by `require_admin` dependency (HTTP 401/403). |
+| `TASK-802B` | Single Administrator Provisioning | `Completed` | `TASK-801B` | - Admin identity supplied via server environment variables (`ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_BOOTSTRAP_TOKEN`).<br>- Endpoint `POST /api/v1/admin/bootstrap` decodes verified Supabase JWT; assigns `UserRole.ADMIN` only if token email matches `ADMIN_EMAIL`.<br>- No public signup or client metadata can grant admin privileges. Zero hardcoded passwords. |
+| `TASK-803B` | Minimal Admin Operational Dashboard | `Completed` | `TASK-802B` | - Bounded aggregate KPI cards: students, teachers, total quizzes, published quizzes, active attempts, and total attempts.<br>- Paginated user directory with search by name, email, or PRN; allows toggling account activation while preventing admin self-deactivation.<br>- Paginated audit log viewer with action filtering and detail inspection. |
+| `TASK-804B` | Guarded Destructive Test-Data Reset Utility | `Completed` | `TASK-803B` | - Development and testing utility disabled by default (`ALLOW_DESTRUCTIVE_RESET=false`).<br>- Strictly blocked in production (`ENVIRONMENT=production` returns 403).<br>- Requires explicit confirmation token matching `CONFIRM_DELETE_ALL_TEST_DATA`.<br>- Deletes assessment records in strict transactional dependency order: `attempt_answers` $\rightarrow$ `attempt_telemetry_events` $\rightarrow$ `grade_adjustments` $\rightarrow$ `quiz_attempts` $\rightarrow$ `quiz_assignments` $\rightarrow$ `import_jobs` $\rightarrow$ `question_options` $\rightarrow$ `questions` $\rightarrow$ `quiz_versions` $\rightarrow$ `quizzes`.<br>- Preserves all user authentication accounts and audit history; creates `system.destructive_reset` audit record. |
+| `TASK-805B` | Teacher Password Recovery via Supabase Auth | `Completed` | `TASK-801B` | - Follows standard Supabase Auth recovery workflow (`supabase.auth.resetPasswordForEmail` $\rightarrow$ `/teacher/reset-password` $\rightarrow$ `supabase.auth.updateUser`).<br>- Presents generic confirmation responses to mitigate user enumeration.<br>- Credentials kept secure; no custom password storage. |
+| `TASK-806B` | Roster Import & Cross-Teacher Enrollment Verification | `Completed` | Phase 5 | - Validated 14 specific criteria via comprehensive automated tests (`test_roster_integrity.py`).<br>- Teacher A and Teacher B can assign the same student to different quizzes without global enrollment conflict.<br>- Duplicate assignment on same quiz handled idempotently; PRN strings preserved with leading zeros; identity conflicts rejected with HTTP 422. |
+
+---
+
+## Phase 9: Testing, Security Verification & Concurrent Load Simulation
 **Goal**: Comprehensive test coverage across backend, frontend, end-to-end user flows, and realistic concurrent-load testing.
 
 | Task ID | Task Title | Status | Dependencies | Acceptance Criteria |
 |---|---|---|---|---|
-| `TASK-801` | Backend unit and API integration tests | `Not started` | Phase 2 - 7 | - >85% branch coverage with `pytest` and `httpx`.<br>- All edge cases (deadlines, duplicate submissions, negative scores) covered. |
-| `TASK-802` | Frontend unit and component tests | `Not started` | Phase 3 - 7 | - Component tests for quiz runner, autosave debouncer, and timer with `Vitest`. |
-| `TASK-803` | End-to-end user flows with Playwright | `Not started` | `TASK-801`, `TASK-802` | - Automated E2E tests for Teacher: Create Quiz -> Import Questions -> Import Roster -> Release Results.<br>- Automated E2E tests for Student: Login -> Start Attempt -> Autosave -> Submit -> View Score. |
-| `TASK-804` | High-concurrency load testing | `Not started` | `TASK-803` | - Simulated synchronized exam start (hundreds of virtual students) and burst autosave traffic.<br>- Sub-200ms p95 latency under target concurrency verified. |
-
----
-
-## Phase 9: Administrative Dashboard & Institutional Governance
-**Goal**: Dedicated administrator portal for institution-wide analytics, teacher account provisioning, and audit oversight. *(Deferred to post-MVP)*
-
-| Task ID | Task Title | Status | Dependencies | Acceptance Criteria |
-|---|---|---|---|---|
-| `TASK-901` | Institutional administrator portal | `Not started` | Phase 8 | - RBAC-protected portal for managing teacher accounts and auditing institutional assessment logs. |
+| `TASK-901` | Backend unit and API integration tests | `In progress` | Phase 2 - 8B | - 154 passing backend tests with `pytest` and `httpx`.<br>- Edge cases covered: proctoring deductions, roster conflicts, admin auth, guarded reset. |
+| `TASK-902` | Frontend unit and component tests | `Not started` | Phase 3 - 8B | - Component tests for quiz runner, autosave debouncer, and timer with `Vitest`. |
+| `TASK-903` | End-to-end user flows with Playwright | `Not started` | `TASK-901`, `TASK-902` | - Automated E2E tests for Teacher: Create Quiz -> Import Questions -> Import Roster -> Release Results.<br>- Automated E2E tests for Student: Login -> Start Attempt -> Autosave -> Submit -> View Score. |
+| `TASK-904` | High-concurrency load testing | `Not started` | `TASK-903` | - Simulated synchronized exam start (hundreds of virtual students) and burst autosave traffic.<br>- Sub-200ms p95 latency under target concurrency verified. |

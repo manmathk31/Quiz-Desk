@@ -647,11 +647,73 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank -> 0004_question_difficulty -> 0005_assignment_lifecycle -> 0006_attempt_shuffling (head)`. |
 | `alembic -c backend/alembic.ini upgrade 0005_assignment_lifecycle:0006_attempt_shuffling --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for attempt shuffling columns, client timestamp, and student status index. |
 | `alembic -c backend/alembic.ini downgrade 0006_attempt_shuffling:0005_assignment_lifecycle --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0006. |
+### 2026-10-23: Phase 8B — Minimal Admin Portal, Guarded Test Reset, Teacher Password Recovery & Roster Verification
+- **Context & Objectives**:
+  - Implemented Phase 8B completing the remaining pre-production application requirements.
+  - Delivered a minimal, secure operational administrator portal with bounded KPI metrics, a searchable user directory, account activation/deactivation controls (blocking self-deactivation), and an audit log trail viewer.
+  - Created a server-authoritative single administrator provisioning/bootstrap mechanism via environment variables (`ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_BOOTSTRAP_TOKEN`), preventing client role spoofing and eliminating hardcoded passwords.
+  - Implemented a strictly guarded destructive test-data reset utility: disabled by default (`ALLOW_DESTRUCTIVE_RESET=false`), blocked in production (`ENVIRONMENT=production` returns 403), restricted to admins, requiring an exact confirmation code (`CONFIRM_DELETE_ALL_TEST_DATA`), executing in transactional foreign-key dependency order, preserving all user accounts and audit history, and generating an immutable audit event.
+  - Implemented teacher password recovery following the standard Supabase Auth workflow (`resetPasswordForEmail` -> `/teacher/reset-password` -> `updateUser`) with generic messaging to avoid email enumeration.
+  - Established dedicated portal entry routes (`/student/login`, `/teacher/login`, `/admin/login`), role-isolated navigation in `Header.tsx` (never displaying admin links to students), and verified all 14 roster and cross-teacher assignment criteria.
+- **Action**: Backend Operational Configuration & Schemas (DEC-022)
+  - Added `ENVIRONMENT`, `ALLOW_DESTRUCTIVE_RESET`, `ADMIN_EMAIL`, `ADMIN_NAME`, and `ADMIN_BOOTSTRAP_TOKEN` to `backend/app/core/config.py`.
+  - Added placeholder templates to `backend/.env.example` with zero exposed secrets.
+  - Created `backend/app/schemas/admin.py` with Pydantic request/response schemas for overview stats, user directory, audit logs, reset status, and bootstrap requests.
+- **Action**: Backend Admin Service & API Endpoints
+  - Created `backend/app/services/admin_service.py`:
+    - `get_admin_overview`: Bounded aggregate queries on indexed columns (students, teachers, total quizzes, published quizzes, in-progress attempts, total attempts) + last 10 audit logs with outer-joined actor emails.
+    - `list_admin_users`: Paginated search by name, email, or PRN with optional role filtering.
+    - `update_user_status`: Safely toggles `is_active` while strictly blocking self-deactivation by administrators; creates `user.status_updated` audit event.
+    - `list_audit_logs`: Paginated inspection of tamper-evident audit trail with action filtering.
+    - `execute_destructive_test_data_reset`: 7 security safeguards enforced. Transactionally deletes in order: `AttemptAnswer` -> `AttemptTelemetryEvent` -> `GradeAdjustment` -> `QuizAttempt` -> `QuizAssignment` -> `ImportJob` -> `QuestionOption` -> `Question` -> `QuizVersion` -> `Quiz`. Preserves `User` accounts and `AuditEvent` table; records `system.destructive_reset` audit event.
+    - `bootstrap_admin_user`: Server-authoritative promotion/creation of administrator account strictly matching `ADMIN_EMAIL` and `ADMIN_BOOTSTRAP_TOKEN`.
+  - Created `backend/app/api/v1/endpoints/admin.py` and registered with `api_v1_router` in `backend/app/api/v1/__init__.py`.
+- **Action**: Roster & Cross-Teacher Enrollment Verification
+  - Verified that `QuizAssignment` unique constraints (`(quiz_id, student_prn)` and `(quiz_id, student_email)`) are strictly scoped per assessment.
+  - Created `backend/tests/test_roster_integrity.py` testing:
+    - Special test case: Teacher A assigns Student X to Quiz A, and Teacher B assigns Student X to Quiz B. Both assignments succeed and remain isolated.
+    - Re-importing the same roster is idempotent and does not produce duplicate records.
+    - PRN strings preserve leading zeros (e.g. `00042`).
+    - PRN/email mismatches are identified as identity conflicts and rejected with HTTP 422.
+    - Ownership isolation: Teacher B cannot access Teacher A's quiz roster (HTTP 404/403).
+- **Action**: Frontend Architecture & Dedicated Portals
+  - Created `frontend/src/types/admin.ts` and `frontend/src/services/adminApi.ts`.
+  - Created dedicated portal entry pages in `frontend/src/pages/auth/`:
+    - `StudentLogin.tsx`: Focused student assessment portal login; redirects to `/student/portal`.
+    - `TeacherLogin.tsx`: Faculty portal login with "Forgot password?" link; redirects to `/teacher/quizzes`.
+    - `TeacherForgotPassword.tsx`: Requests Supabase Auth recovery link; generic success messaging.
+    - `TeacherResetPassword.tsx`: Updates password via `supabase.auth.updateUser`.
+    - `AdminLogin.tsx`: Operational administrator login with bootstrap provisioning action.
+  - Updated `frontend/src/pages/Login.tsx` with clean portal selection cards.
+  - Updated `frontend/src/components/layout/Header.tsx` so navigation links are strictly role-aware (`admin` sees Admin Portal; `student` never sees admin or teacher controls).
+  - Built `frontend/src/pages/admin/AdminDashboard.tsx`:
+    - Tab 1 (Overview): Metric summary cards + recent platform activity table.
+    - Tab 2 (Users): Searchable, paginated user directory with status toggle (self-deactivation disabled).
+    - Tab 3 (Audit): Paginated audit event log viewer.
+    - Tab 4 (Reset): Guarded reset panel checking server environment and flag; modal confirmation requiring typing `CONFIRM_DELETE_ALL_TEST_DATA`.
+  - Registered all routes in `frontend/src/App.tsx` protected by `<RequireRole allowedRoles={['admin']}>`.
+- **Action**: Automated Testing & Validation
+  - Authored `backend/tests/test_admin_portal.py` with 12 tests covering auth enforcement (401/403), bootstrap provisioning, overview stats, user directory & search, status updates & self-guard, reset disabled by default, reset in production blocked, invalid confirmation blocked, and transactional cleanup with user/audit preservation.
+  - Authored `backend/tests/test_roster_integrity.py` with 5 integration tests.
+  - Executed full backend pytest suite: `154 passed in 7.66s` (all 137 prior tests + 17 new tests passing).
+  - Executed frontend linting (`oxlint`): 0 errors across 51 files.
+  - Executed frontend production build (`npm run build`): passed cleanly in 915ms.
+
+---
+
+## 5. Commands Executed & Outcomes (Chronological)
+
+| Command Line | Directory | Exit Code | Outcome Summary |
+|---|---|---|---|
 | `alembic -c backend/alembic.ini upgrade 0006_attempt_shuffling:0007_proctoring_hardening --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline DDL for proctoring columns on `quiz_versions`, `quiz_attempts`, and `attempt_telemetry_events`. |
 | `alembic -c backend/alembic.ini downgrade 0007_proctoring_hardening:0006_attempt_shuffling --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0007. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `137 passed in 6.08s` (all 127 prior tests + 10 dedicated proctoring hardening tests passing). |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `137 passed in 6.08s` (Phase 8A proctoring hardening verification). |
 | `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 43 files. |
 | `npm run build` (`tsc -b && vite build`) | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite production build passed in 1.07s. |
+| `git commit -m "feat: harden assessment proctoring controls"` | `d:\ANUP\Quizdesk` | 0 | Phase 8A committed as `ff44a6aa820c5a29df7f56308c91760c8d137dbf`. |
+| `.\.venv\Scripts\python.exe -m pytest -v` | `d:\ANUP\Quizdesk\backend` | 0 | `154 passed in 7.66s` (all 137 Phase 8A tests + 17 Phase 8B tests passing). |
+| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 51 files. |
+| `npm run build` (`tsc -b && vite build`) | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript compilation and Vite build succeeded in 915ms (788kB gzip: 195kB). |
 
 ---
 
@@ -666,26 +728,26 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
-  - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API, Assessment API, Teacher Results API, Proctoring Hardening)**:
-  - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `137 passed in 6.08s`.
+  - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git. No credentials or secrets committed.
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API, Assessment API, Teacher Results API, Proctoring Hardening, Admin Portal, Roster Integrity)**:
+  - Executed: `.\.venv\Scripts\python.exe -m pytest -v` in `backend`
+  - Results: `154 passed in 7.66s`.
 - **Frontend Linter & Production Build Verification**:
-  - Executed: `npm run lint` (oxlint): 0 errors across 43 files.
-  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2015 modules transformed in 1.07s.
-- **Alembic Offline Migration Checks**:
-  - Verified `upgrade 0006_attempt_shuffling:0007_proctoring_hardening --sql` and `downgrade 0007_proctoring_hardening:0006_attempt_shuffling --sql`. Validated migration chain 0001 -> 0007.
+  - Executed: `npm run lint` (oxlint): 0 errors across 51 files.
+  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2022 modules transformed in 915ms.
+- **Roster & Cross-Teacher Integrity Checks**:
+  - Teacher A and Teacher B cross-quiz student enrollment verified non-conflicting.
+  - Same-quiz duplicate prevention, re-import idempotency, and leading-zero PRN string preservation verified.
 
 ---
 
 ## 8. Known Issues, Risks & Unresolved Questions
 
 ### Known Risks & Modeling Trade-Offs:
-1. **Question Bank Isolation via Deep Copy**: Reusable bank questions are cloned with their options when added to a quiz version. Bank updates do not propagate to quizzes, preserving historical assessment integrity.
-2. **Published Quiz Mutability**: Modifying settings or questions on a published quiz automatically branches a new draft `QuizVersion`, leaving previous versions and student attempts attached to their original frozen snapshot.
-3. **Additive Roster Re-Imports**: Re-importing a roster updates student details (name, division) without silently removing unlisted students. Deletions require explicit removal in the teacher UI, which is blocked if historical attempts exist.
-4. **Browser-Based Proctoring Boundaries**: Browser APIs (fullscreen, visibility, blur, clipboard events) provide deterrents and factual audit telemetry. Web applications cannot inspect the student's operating system, block external physical devices, or claim reliable screenshot detection. All detected events are factual signals, not conclusive proof of academic dishonesty.
-5. **Concurrent Exam Load Capacity**: Actual synchronized 50+ student exam load testing is reserved for Phase 8 against a deployed PostgreSQL environment.
+1. **Destructive Reset Isolation**: Guarded reset is strictly a test utility. It will refuse to run in production (`ENVIRONMENT=production`) and requires `ALLOW_DESTRUCTIVE_RESET=true` plus explicit string confirmation.
+2. **Email Delivery Dependency**: Live password recovery email dispatch depends on active Supabase Auth SMTP configuration in `.env.local` / `.env`. In local test environments without live credentials, the UI warns gracefully and tests mock/simulate token verification.
+3. **Browser-Based Proctoring Boundaries**: Browser APIs (fullscreen, visibility, blur, clipboard events) provide deterrents and factual audit telemetry. Web applications cannot inspect the student's operating system, block external physical devices, or claim reliable screenshot detection. All detected events are factual signals, not conclusive proof of academic dishonesty.
+4. **Concurrent Exam Load Capacity**: Actual synchronized 50+ student exam load testing is reserved for Phase 9 against a deployed PostgreSQL environment.
 
 ### Unresolved Questions / Future Confirmations:
 - Live Supabase project credentials to be provided in `.env.local` and `.env` prior to staging deployment.
@@ -693,14 +755,14 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All changes strictly adhere to DEC-001 through DEC-021.
+- **None**: All changes strictly adhere to DEC-001 through DEC-022.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-801`: Backend unit and API integration tests (Phase 8: Testing, Security Verification & Concurrent Load Simulation)**
-- Build comprehensive test suites, component tests, end-to-end user flows, and realistic concurrent-load simulation for high-concurrency college assessments.
+**Task**: **`TASK-901`: Comprehensive high-concurrency simulation and production-readiness verification (Phase 9)**
+- Execute realistic concurrent-load simulation for synchronized exam start (hundreds of simulated students) and burst autosave traffic.
 
 
 

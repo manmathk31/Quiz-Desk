@@ -417,6 +417,43 @@ This document tracks all formal architectural and product decisions for **Quizde
 - **Rationale**: Replaces hardcoded tab-switch rules with teacher-configurable academic integrity policies; provides complete fairness and auditability while preventing browser-based student cheating.
 - **Implications**: Schema updated in migration `0007_proctoring_hardening.py` adding check constraints and proctoring columns on `quiz_versions`, `quiz_attempts`, and `attempt_telemetry_events`.
 
+---
 
-
-
+### DEC-022: Restricted Operational Admin Portal, Guarded Test Reset, Teacher Password Recovery & Roster Verification
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Separate Portal Entry Points & Role-Aware Navigation**:
+    - Dedicated entry points for student (`/student/login`), teacher (`/teacher/login`), and admin (`/admin/login`).
+    - Student portal and navigation shell never display admin links, controls, or indicators.
+    - All admin API routes (`/api/v1/admin/*`) enforce backend role checks via `require_admin` dependency; client route guards are supplementary UX only.
+  - **Single Administrator Provisioning**:
+    - Designated administrator identity configured via environment variables (`ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_BOOTSTRAP_TOKEN`), never hardcoded in code, database seeds, or client bundles.
+    - Provisioning endpoint `POST /api/v1/admin/bootstrap` decodes verified Supabase JWT; assigns `UserRole.ADMIN` only if token email matches `ADMIN_EMAIL` and provided bootstrap token matches `ADMIN_BOOTSTRAP_TOKEN`.
+    - No client-supplied roles, metadata, or public signup requests can ever grant administrative privileges.
+  - **Minimal Admin Dashboard**:
+    - Bounded, efficient KPI metrics: total registered students, total teachers, total quizzes, published quizzes, active attempts, and total attempts.
+    - Paginated user directory with text search across name, email, and student PRN; allows toggling account activation status while strictly blocking administrator self-deactivation.
+    - Paginated audit trail viewer with action filtering and JSON details inspection.
+  - **Guarded Destructive Test-Data Reset Utility**:
+    - Exclusively intended as a non-production development/testing utility.
+    - High-integrity safeguards:
+      1. Disabled by default (`ALLOW_DESTRUCTIVE_RESET=false`).
+      2. Strictly blocked when `ENVIRONMENT=production` (returns HTTP 403 Forbidden).
+      3. Requires authenticated admin role.
+      4. Requires explicit request confirmation code matching `CONFIRM_DELETE_ALL_TEST_DATA` (returns HTTP 400 Bad Request otherwise).
+      5. Strictly transactional deletion in foreign-key dependency order: `attempt_answers` $\rightarrow$ `attempt_telemetry_events` $\rightarrow$ `grade_adjustments` $\rightarrow$ `quiz_attempts` $\rightarrow$ `quiz_assignments` $\rightarrow$ `import_jobs` $\rightarrow$ `question_options` $\rightarrow$ `questions` $\rightarrow$ `quiz_versions` $\rightarrow$ `quizzes`.
+      6. Preserves all user authentication accounts (including Administrator) and preserves the tamper-evident `audit_events` log.
+      7. Records a `system.destructive_reset` audit event detailing cleared record counts and operator identity.
+  - **Teacher Password Recovery**:
+    - Built on standard Supabase Auth recovery workflow (`supabase.auth.resetPasswordForEmail` $\rightarrow$ `/teacher/reset-password` $\rightarrow$ `supabase.auth.updateUser`).
+    - Uses generic success responses to mitigate user enumeration risks.
+    - Secrets kept on the server; public client config uses `.env.local` / `.env.example` templates.
+  - **Roster Cross-Teacher Enrollment & Assignment Integrity**:
+    - Roster assignments are strictly scoped per assessment (`quiz_assignments.quiz_id`).
+    - Cross-teacher enrollment is non-conflicting: Teacher A assigning student X to Quiz A does not conflict with Teacher B assigning student X to Quiz B.
+    - Same-quiz duplicate assignments are prevented at database (`uq_quiz_assignment_prn`, `uq_quiz_assignment_email`) and service levels; re-imports are idempotent.
+    - PRNs are preserved as strings with leading zeros intact.
+    - PRN/email mismatches are detected as identity conflicts and rejected with HTTP 422 Unprocessable Entity.
+- **Rationale**: Delivers required operational oversight and test agility while preserving rigorous security boundaries, credential hygiene, and academic data integrity.
+- **Implications**: Endpoints implemented in `backend/app/api/v1/endpoints/admin.py`, services in `backend/app/services/admin_service.py`, frontend routes in `frontend/src/pages/admin/` and `frontend/src/pages/auth/`. Verified by 154 automated backend tests and frontend build.

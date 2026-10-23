@@ -11,13 +11,18 @@ export const Header: React.FC = () => {
   const navLinks = [
     { label: 'Overview', path: '/' },
     { label: 'System Status', path: '/status' },
-    ...(session
+    ...(session && role === 'student'
+      ? [{ label: 'Student Portal', path: '/student/portal' }]
+      : []),
+    ...(session && (role === 'teacher' || role === 'admin')
       ? [
-          { label: 'Student Portal', path: '/student/portal' },
           { label: 'Teacher Portal', path: '/teacher/portal' },
-          { label: 'Question Bank', path: '/teacher/question-bank' },
           { label: 'Quizzes', path: '/teacher/quizzes' },
+          { label: 'Question Bank', path: '/teacher/question-bank' },
         ]
+      : []),
+    ...(session && role === 'admin'
+      ? [{ label: 'Admin Portal', path: '/admin/dashboard' }]
       : []),
   ]
 
