@@ -198,55 +198,129 @@ For an initial college pilot of approximately 30–50 students, the simplest, mo
 
 ---
 
-## 9. Step-by-Step Production Deployment Guide
+## 9. Step-by-Step Production Deployment Guide (Vercel + Hugging Face Spaces + Supabase)
 
-### 9.1 Backend Deployment (Render or Railway via Docker)
-1. **Repository Setup**:
-   - Connect GitHub repository to Render/Railway.
-   - Set Root Directory to `backend` (or use repository root with Dockerfile `backend/Dockerfile`).
-2. **Environment Variables Configuration**:
-   ```ini
-   ENVIRONMENT="production"
-   ALLOW_DESTRUCTIVE_RESET="false"
-   DATABASE_URL="postgresql+psycopg://postgres.[REF]:[PASS]@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
-   DB_POOL_SIZE="8"
-   DB_MAX_OVERFLOW="4"
-   DB_POOL_TIMEOUT="30"
-   DB_POOL_RECYCLE="1800"
-   SUPABASE_URL="https://[PROJECT_REF].supabase.co"
-   SUPABASE_JWT_SECRET="[YOUR_SUPABASE_JWT_SECRET]"
-   SUPABASE_JWT_ALGORITHM="HS256"
-   SUPABASE_JWT_AUDIENCE="authenticated"
-   CORS_ORIGINS='["https://quizdesk.yourinstitution.edu"]'
-   ADMIN_EMAIL="admin@institution.edu"
-   ADMIN_NAME="System Administrator"
-   ADMIN_BOOTSTRAP_TOKEN="[GENERATE_SECURE_RANDOM_TOKEN]"
-   ```
-3. **Pre-Deploy Migration Command**:
-   - In deployment settings, configure the release/pre-deploy hook:
-     ```bash
-     alembic -c alembic.ini upgrade head
+### 9.1 Backend Deployment (Hugging Face Spaces via Docker)
+Hugging Face Spaces provides free 2 vCPU / 16 GB RAM Docker hosting with a **48-hour inactivity sleep window** (dramatically superior to typical 15-minute free tiers).
+
+1. **Create Hugging Face Space**:
+   - Log into [Hugging Face](https://huggingface.co) and click **New Space**.
+   - **Space Name**: `quizdesk-api` (or institution equivalent).
+   - **License**: `mit` or `apache-2.0`.
+   - **SDK**: Select **Docker** (Blank template).
+   - **Space Hardware**: Free tier (2 vCPU · 16 GB RAM).
+   - **Visibility**: Public (required for free public API routing; application security is enforced at JWT/API level).
+
+2. **Repository & Directory Structure**:
+   - Either push the `backend` folder directly to the Space Git repository, or configure GitHub Actions / Space sync.
+   - The root of the Space must contain the contents of `backend/` (specifically `Dockerfile`, `requirements.txt`, `alembic.ini`, `app/`, and `alembic/`).
+
+3. **Container Compatibility Invariants**:
+   - **Port**: Hugging Face Spaces routes internal traffic to port `7860`. The `backend/Dockerfile` exposes and defaults to `7860` (`CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]`).
+   - **User UID**: Hugging Face Spaces requires running as unprivileged user with `UID 1000`. `backend/Dockerfile` creates user `user` with `UID 1000`.
+   - **Health Probe**: Liveness probe queries `http://localhost:${PORT:-7860}/health/live`.
+
+4. **Configure Space Secrets & Environment Variables**:
+   In Hugging Face Space **Settings > Variables and secrets**:
+   - Under **Secrets** (Encrypted, server-side only):
+     - `DATABASE_URL`: `postgresql+psycopg://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres` (Use Supabase Session Pooler URL with port 5432).
+     - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase private service role key.
+     - `SUPABASE_JWT_SECRET`: Your Supabase HS256 JWT Secret.
+     - `ADMIN_BOOTSTRAP_TOKEN`: Secure high-entropy random string (e.g. `openssl rand -hex 32`).
+   - Under **Variables** (Public configuration):
+     - `ENVIRONMENT`: `production`
+     - `ALLOW_DESTRUCTIVE_RESET`: `false`
+     - `DB_POOL_SIZE`: `8`
+     - `DB_MAX_OVERFLOW`: `4`
+     - `DB_POOL_TIMEOUT`: `30`
+     - `DB_POOL_RECYCLE`: `1800`
+     - `SUPABASE_URL`: `https://[PROJECT_REF].supabase.co`
+     - `SUPABASE_JWT_ALGORITHM`: `HS256`
+     - `SUPABASE_JWT_AUDIENCE`: `authenticated`
+     - `CORS_ORIGINS`: `["https://[YOUR_VERCEL_APP].vercel.app"]`
+     - `ADMIN_EMAIL`: `admin@institution.edu`
+     - `ADMIN_NAME`: `Institutional Administrator`
+
+5. **Cold-Start & Sleep Operational Policy**:
+   - HF Spaces free tier sleeps after **48 hours** of zero incoming traffic. Cold start takes 15–30 seconds.
+   - **Scheduled pings or artificial keep-alive bots are strictly prohibited.**
+   - **Pre-Warming Routine**: Exam administrators or teachers should simply access the portal or hit `GET /health` 10–15 minutes before scheduled quiz start. The space will wake up immediately and remain active continuously for the next 48 hours, fully covering all assessment windows.
+
+---
+
+### 9.2 Frontend Deployment (Vercel)
+Vercel hosts the React SPA with global edge caching and automatic SSL.
+
+1. **Import Git Repository in Vercel**:
+   - Log into [Vercel](https://vercel.com) and click **Add New... > Project**.
+   - Select your Git repository.
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: Click "Edit" and choose `frontend`.
+   - **Build Command**: `npm run build` (or leave default).
+   - **Output Directory**: `dist` (default).
+
+2. **Configure Frontend Environment Variables**:
+   Under **Environment Variables**:
+   - `VITE_API_BASE_URL`: `https://[YOUR_HF_USERNAME]-[YOUR_SPACE_NAME].hf.space` (Note: HF Space direct URL format; remove trailing slash).
+   - `VITE_SUPABASE_URL`: `https://[PROJECT_REF].supabase.co`
+   - `VITE_SUPABASE_ANON_KEY`: `[YOUR_PUBLIC_ANON_KEY]`
+   *(CRITICAL: Never add `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, or database credentials to Vercel).*
+
+3. **SPA Routing Configuration**:
+   - Handled automatically by [`frontend/vercel.json`](file:///d:/ANUP/Quizdesk/frontend/vercel.json):
+     ```json
+     {
+       "rewrites": [
+         {
+           "source": "/(.*)",
+           "destination": "/index.html"
+         }
+       ]
+     }
      ```
-4. **Health Check Probe Path**:
-   - Configure health check endpoint to `/health/live` (for container liveness) and `/health/ready` (for traffic readiness).
 
-### 9.2 Frontend Deployment (Vercel or Cloudflare Pages)
-1. **Build Configuration**:
-   - Framework Preset: `Vite`
-   - Root Directory: `frontend`
-   - Build Command: `npm run build`
-   - Output Directory: `dist`
-2. **Environment Variables**:
-   ```ini
-   VITE_API_BASE_URL="https://api-quizdesk.yourinstitution.edu"
-   VITE_SUPABASE_URL="https://[PROJECT_REF].supabase.co"
-   VITE_SUPABASE_ANON_KEY="[YOUR_PUBLIC_ANON_KEY]"
+4. **Plan & Academic Use Compliance**:
+   - Vercel Hobby is permitted for non-commercial evaluation and pilot testing.
+   - If university procurement policies require enterprise or commercial terms without licensing fees, Cloudflare Pages is a 100% free production alternative that uses the exact same build artifact (`dist/`) and `public/_redirects`.
+
+---
+
+### 9.3 Database Migration & Verification Procedure
+Never run migrations automatically inside auto-scaling container startup scripts. Run migrations explicitly:
+
+1. **Run Migrations Locally Pointing to Remote DB**:
+   From your local development machine with validated environment:
+   ```bash
+   cd backend
+   # Ensure DATABASE_URL in .env points to the Supabase Session Pooler
+   ..\.venv\Scripts\python.exe -m alembic upgrade head
    ```
-   *(Note: Never add `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_JWT_SECRET` to frontend variables).*
-3. **SPA Routing Rewrites**:
-   - Handled automatically by [`frontend/vercel.json`](file:///d:/ANUP/Quizdesk/frontend/vercel.json) or [`frontend/public/_redirects`](file:///d:/ANUP/Quizdesk/frontend/public/_redirects).
+2. **Verify Applied Revisions**:
+   Verify via read-only query:
+   ```sql
+   SELECT version_num FROM alembic_version;
+   ```
+   Must return the latest migration revision: `0007_proctoring_hardening`.
 
-### 9.3 Custom SMTP Setup for Password Recovery
+---
+
+### 9.4 Supabase Auth & Production CORS Configuration
+
+1. **Supabase Auth Redirect URLs**:
+   In the Supabase Dashboard > **Authentication > URL Configuration**:
+   - **Site URL**: `https://[YOUR_VERCEL_APP].vercel.app`
+   - **Redirect URLs**: Add:
+     - `https://[YOUR_VERCEL_APP].vercel.app/**`
+     - `https://[YOUR_VERCEL_APP].vercel.app/teacher/reset-password`
+     - `http://localhost:5173/**` (for ongoing local development)
+
+2. **Backend CORS Origins**:
+   Ensure `CORS_ORIGINS` in Hugging Face Space settings includes:
+   `["https://[YOUR_VERCEL_APP].vercel.app", "http://localhost:5173"]`
+
+---
+
+### 9.5 Custom SMTP Setup for Password Recovery
 Supabase Auth limits password recovery emails to **5 emails per hour** on the default shared email service:
 1. In the Supabase Dashboard, navigate to **Project Settings > Auth > SMTP Settings**.
 2. Enable **Enable Custom SMTP**.
@@ -257,6 +331,21 @@ Supabase Auth limits password recovery emails to **5 emails per hour** on the de
    - Password: `[API_KEY]`
    - Sender Email: `noreply@institution.edu`
    - Sender Name: `Quizdesk Assessment System`
+
+---
+
+### 9.6 Step-by-Step Pilot Rehearsal & Verification Checklist
+Before admitting real students to an exam:
+- [ ] 1. **Backend Health Probes**: `curl -f https://[YOUR_HF_SPACE].hf.space/health/live` returns 200 OK (`{"status":"alive"}`); `curl -f https://[YOUR_HF_SPACE].hf.space/health/ready` returns 200 OK (`{"status":"ready","database":"connected"}`).
+- [ ] 2. **Admin Bootstrap**: Log into `/admin/login` using `ADMIN_EMAIL` and trigger bootstrap with `ADMIN_BOOTSTRAP_TOKEN`. Confirm admin role acquired.
+- [ ] 3. **Teacher Onboarding**: Sign in to `/teacher/login`, navigate to Question Bank, create a sample question and import a 5-question test CSV.
+- [ ] 4. **Quiz Publishing**: Create a test quiz, attach questions, configure schedule window, and publish. Verify published quiz is locked/immutable.
+- [ ] 5. **Roster Import**: Upload a 2-student roster CSV. Confirm preview calculations and transactional commitment.
+- [ ] 6. **Student Delivery & Proctoring**: Sign in as a test student, confirm assessment appears on dashboard, complete pre-quiz readiness check, enter fullscreen mode.
+- [ ] 7. **Autosave Verification**: Select answer options, verify network panel confirms `PUT /api/v1/student/attempts/.../answers/...` returns 200 OK within <500ms.
+- [ ] 8. **Final Submission**: Submit quiz attempt. Confirm instant server-side auto-grading and attempt marked `submitted`.
+- [ ] 9. **Teacher Results & Release**: Teacher opens `/teacher/quizzes/[id]/results`, inspects score breakdown and proctoring telemetry, clicks "Release Results". Student refreshes and verifies score is visible.
+- [ ] 10. **Audit Log Verification**: Admin opens `/admin/dashboard`, verifies audit events were captured for bootstrap, quiz publish, roster import, attempt start, and result release.
 
 ---
 

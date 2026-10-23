@@ -457,3 +457,28 @@ This document tracks all formal architectural and product decisions for **Quizde
     - PRN/email mismatches are detected as identity conflicts and rejected with HTTP 422 Unprocessable Entity.
 - **Rationale**: Delivers required operational oversight and test agility while preserving rigorous security boundaries, credential hygiene, and academic data integrity.
 - **Implications**: Endpoints implemented in `backend/app/api/v1/endpoints/admin.py`, services in `backend/app/services/admin_service.py`, frontend routes in `frontend/src/pages/admin/` and `frontend/src/pages/auth/`. Verified by 154 automated backend tests and frontend build.
+
+---
+
+### DEC-023: Production Hosting Architecture & Container Packaging (Vercel + Hugging Face Spaces + Supabase)
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Frontend Hosting (Vercel)**:
+    - Deployed as a static single-page application (SPA) from the `frontend/` directory using Vite build output (`dist`).
+    - Client-side React Router rewrites configured via `frontend/vercel.json` (`"rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]`).
+    - Environment variables limited strictly to public client properties: `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+    - Plan considerations: Vercel Hobby tier is suitable for proof-of-concept and academic evaluation. For institutional pilots requiring formal compliance or shared team collaboration, Vercel Pro or zero-cost Cloudflare Pages are designated fallback alternatives.
+  - **Backend Hosting (Hugging Face Spaces - Docker)**:
+    - Packaged via production Docker container with Python 3.12 slim base.
+    - Hugging Face Spaces port requirement: listens on internal default port `7860` (`EXPOSE 7860`, `CMD ... --port ${PORT:-7860}`) while maintaining dynamic `$PORT` compatibility.
+    - Hugging Face Spaces permission requirement: runs under unprivileged non-root user `user` with `UID 1000`.
+    - Lifecycle and cold start: Free tier provides 2 vCPUs and 16 GB RAM with a 48-hour inactivity sleep timeout. Cold boot takes ~15–30s. Background keep-alive pingers are strictly prohibited. Instead, the operational procedure mandates pre-warming the backend 10–15 minutes before scheduled exam windows to ensure zero student disruption.
+    - Secrets management: All sensitive backend credentials (`DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `ADMIN_BOOTSTRAP_TOKEN`, `ENVIRONMENT=production`) are configured through the Hugging Face Space Settings "Variables and secrets" vault.
+  - **Database & Authentication (Supabase)**:
+    - Retains existing Supabase project for PostgreSQL 17 and Supabase Auth.
+    - Connected via Supabase Session Pooler (port 5432) with calibrated bounds (`DB_POOL_SIZE=8`, `DB_MAX_OVERFLOW=4`) to honor free-tier connection limits while servicing 30+ concurrent students.
+    - Production CORS origins and Supabase Auth redirect URLs explicitly configured with the assigned Vercel production domain.
+    - Database state verified: 0 active test users, 0 test quizzes, 0 test attempts, and 244 immutable audit records retained.
+- **Rationale**: Provides a zero-cost, high-reliability deployment stack with ample compute (2 vCPUs, 16 GB RAM), reasonable inactivity windows (48 hours), fast static global CDN distribution, and strict secret isolation.
+- **Implications**: Container configuration updated in `backend/Dockerfile`, Pydantic Settings updated for path resolution, hardcoded URLs eliminated in frontend pages, and deployment runbook documented in `docs/OPERATIONS_RUNBOOK.md`.

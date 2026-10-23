@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { Server, CheckCircle2, Shield, Layers, RefreshCw } from 'lucide-react'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
 export const Overview: React.FC = () => {
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'unreachable'>('checking')
 
   const checkHealth = async () => {
     setApiStatus('checking')
     try {
-      const res = await fetch('http://localhost:8000/health')
+      const res = await fetch(`${API_BASE_URL}/health`)
       if (res.ok) {
         setApiStatus('connected')
       } else {

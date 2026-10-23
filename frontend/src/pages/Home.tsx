@@ -10,6 +10,8 @@ import {
   ExternalLink
 } from 'lucide-react'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
 export const Home: React.FC = () => {
   return (
     <div className="space-y-8">
@@ -35,7 +37,7 @@ export const Home: React.FC = () => {
               <ArrowRight className="w-4 h-4 ml-1.5" />
             </Link>
             <a
-              href="http://localhost:8000/docs"
+              href={`${API_BASE_URL}/docs`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 transition-colors"

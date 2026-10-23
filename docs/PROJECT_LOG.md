@@ -909,6 +909,93 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `npm run lint` (oxlint) | `frontend` | 0 | 0 errors across 51 files. |
 | `npm run build` (`tsc -b && vite build`) | `frontend` | 0 | TypeScript compilation and Vite build succeeded in 758ms. |
 
+---
+
+# Phase 11: Codebase Cleanup, Runtime Cleanup, and Final Deployment Preparation
+
+**Stage**: Phase 11  
+**Status**: Completed & Verified  
+**Date**: 2026-10-23  
+
+---
+
+## 1. Baseline Verification & Process Inspection
+- **Baseline Git State**: Verified clean working tree against Phase 10 baseline commit `3d6b619` (`perf: optimize query round-trips and prepare deployment configurations for 30-student pilot`).
+- **Development Process Inspection**:
+  - Inspected Windows processes via PowerShell and `manage_task`.
+  - Identified and confirmed zero orphaned or stale Quizdesk processes (zero `python.exe`, `uvicorn.exe`, or `vite` dev servers running). Only system IDE processes and active tool invocations exist.
+  - Zero resource leaks or background locks identified.
+
+---
+
+## 2. Live Database Inspection (Zero Destructive Reset Needed)
+- **Methodology**: Executed read-only verification against the live Supabase PostgreSQL instance via Session Pooler.
+- **Table Record Counts**:
+  - `users`: 0
+  - `student_profiles`: 0
+  - `quizzes`: 0
+  - `quiz_versions`: 0
+  - `questions`: 0
+  - `question_options`: 0
+  - `quiz_assignments`: 0
+  - `quiz_attempts`: 0
+  - `attempt_answers`: 0
+  - `attempt_telemetry_events`: 0
+  - `grade_adjustments`: 0
+  - `import_jobs`: 0
+  - `audit_events`: 244 (retained as required tamper-evident audit history)
+- **Conclusion**: All synthetic load test data from Phase 9/10 was completely cleaned up in prior phases. Zero synthetic records remain. **No destructive database resets or schema alterations were needed or executed.**
+
+---
+
+## 3. Codebase Cleanup & Hardening
+1. **Removed Obsolete Implementation**:
+   - Safely deleted `frontend/src/pages/StudentPortalPlaceholder.tsx` (an early Phase 5 role-guard placeholder completely superseded by `StudentDashboard.tsx` and `StudentQuizRunner.tsx`).
+2. **Eliminated Hardcoded Development URLs**:
+   - `frontend/src/pages/Overview.tsx`: Replaced hardcoded `fetch('http://localhost:8000/health')` with dynamic `fetch(`${API_BASE_URL}/health`)`.
+   - `frontend/src/pages/Home.tsx`: Replaced hardcoded `href="http://localhost:8000/docs"` with dynamic `href={`${API_BASE_URL}/docs`}`.
+3. **Pydantic Settings Path Resolution**:
+   - Updated `backend/app/core/config.py` `SettingsConfigDict` to support `env_file=(".env", "backend/.env")`, ensuring seamless configuration whether executed from repository root or the `backend/` directory.
+4. **Hugging Face Spaces Docker Packaging**:
+   - Configured `backend/Dockerfile` with user `user` (UID 1000) for Hugging Face Spaces container security requirements.
+   - Updated default exposed and listening port to `7860` (`CMD ... --port ${PORT:-7860}`) while maintaining dynamic `$PORT` compatibility.
+   - Updated container health check probe to `http://localhost:${PORT:-7860}/health/live`.
+
+---
+
+## 4. Hosting Compatibility Evaluation
+
+| Component | Target Provider | Compatibility Findings & Decisions |
+| :--- | :--- | :--- |
+| **Frontend** | **Vercel** | - Deployed from `frontend/` directory with Vite preset.<br>- Production SPA rewrites handled by `frontend/vercel.json`.<br>- Environment variables limited strictly to public client values (`VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).<br>- Academic use: Vercel Hobby permits evaluation/testing; Cloudflare Pages is designated as zero-cost institutional alternative. |
+| **Backend** | **Hugging Face Spaces (Docker)** | - Supported on Free CPU tier (2 vCPUs · 16 GB RAM).<br>- Port requirement: routes internal traffic to port `7860`; container default configured to `7860`.<br>- User UID requirement: runs as non-root UID 1000; container user `user` configured.<br>- Inactivity sleep: Sleeps after **48 hours** of zero traffic (substantially better than 15-minute tiers). Cold starts take 15–30s.<br>- Operational rule: Zero artificial keep-alive pingers; pre-warming 10–15 minutes before exams keeps container continuously awake for 48 hours.<br>- Server secrets: Private keys stored in Hugging Face Space Settings vault. |
+| **Auth & DB** | **Supabase** | - Retains existing Supabase PostgreSQL 17 instance via Session Pooler (port 5432).<br>- Calibrated connection pool (`DB_POOL_SIZE=8`, `DB_MAX_OVERFLOW=4`) to honor 15-connection limit.<br>- Production CORS origins (`CORS_ORIGINS`) and Supabase Auth Redirect URLs configured with Vercel domain. |
+
+---
+
+## 5. Automated Verification Results
+
+| Verification Suite | Target | Result | Details |
+| :--- | :--- | :--- | :--- |
+| **Backend Tests** | `backend/tests/` | **PASS (170/170 passed)** | Completed in 11.67s via pytest. All domain, auth, and security audit tests green. |
+| **Frontend Linter** | `frontend/` | **PASS (0 errors)** | `npm run lint` (oxlint) inspected 50 files with 0 errors. |
+| **Frontend Build** | `frontend/` | **PASS (0 errors)** | `npm run build` (`tsc -b && vite build`) transformed 2022 modules in 1.10s. |
+| **Git Diff Review** | Repository | **PASS** | Clean diff: 2 backend files modified, 2 frontend files modified, 1 obsolete file deleted. Zero untracked files. Zero secrets. |
+
+---
+
+## 6. Commands Executed & Outcomes (Chronological)
+
+| Command Line | Directory | Exit Code | Outcome Summary |
+|---|---|---|---|
+| `Test-Path d:\ANUP\Quizdesk\frontend\src\pages\StudentPortalPlaceholder.tsx` | Repository | 0 | Confirmed file exists. |
+| `Remove-Item d:\ANUP\Quizdesk\frontend\src\pages\StudentPortalPlaceholder.tsx -Force` | Repository | 0 | Removed obsolete placeholder file. |
+| `d:\ANUP\Quizdesk\.venv\Scripts\python.exe -m pytest backend/tests -v` | Repository | 0 | 170 passed in 11.67s. |
+| `npm run lint` | `frontend` | 0 | 0 errors across 50 files. |
+| `npm run build` | `frontend` | 0 | Built `frontend/dist` in 1.10s with zero TypeScript errors. |
+| `git status` | Repository | 0 | Verified clean staged/unstaged changes; zero untracked files. |
+
+
 
 
 
