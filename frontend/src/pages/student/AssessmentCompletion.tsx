@@ -1,11 +1,51 @@
-import React from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { CheckCircle2, Clock, ArrowRight, ShieldCheck } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { useNavigate, useLocation, useParams } from 'react-router-dom'
+import { CheckCircle2, Clock, ArrowRight, ShieldCheck, Award } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
+import { fetchStudentAttemptResult } from '../../services/resultsApi'
+import type { StudentAttemptResult } from '../../types/results'
 
 export const AssessmentCompletion: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { attemptId } = useParams<{ attemptId: string }>()
+  const { session } = useAuth()
+  const token = session?.access_token || ''
   const autoExpired = location.state?.autoExpired || false
+
+  const [result, setResult] = useState<StudentAttemptResult | null>(null)
+  const [isReleased, setIsReleased] = useState(false)
+  const [checkingResult, setCheckingResult] = useState(true)
+
+  useEffect(() => {
+    let isMounted = true
+    const checkScore = async () => {
+      if (!token || !attemptId) {
+        setCheckingResult(false)
+        return
+      }
+      try {
+        const res = await fetchStudentAttemptResult(token, attemptId)
+        if (isMounted) {
+          setResult(res)
+          setIsReleased(true)
+        }
+      } catch {
+        // Result is withheld (HTTP 403) or not yet released
+        if (isMounted) {
+          setIsReleased(false)
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingResult(false)
+        }
+      }
+    }
+    checkScore()
+    return () => {
+      isMounted = false
+    }
+  }, [token, attemptId])
 
   return (
     <div className="max-w-xl mx-auto my-16 px-4 text-slate-900">
@@ -24,6 +64,25 @@ export const AssessmentCompletion: React.FC = () => {
             : 'Your attempt has been finalized on the server and safely recorded for automated evaluation.'}
         </p>
 
+        {/* Score Display if Released */}
+        {!checkingResult && isReleased && result && (
+          <div className="my-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-left">
+            <div className="flex items-center space-x-2 text-blue-900 font-bold text-sm mb-1">
+              <Award className="w-4 h-4 text-blue-600" />
+              <span>Released Assessment Score</span>
+            </div>
+            <div className="text-2xl font-bold text-slate-900 mt-2">
+              {result.total_score.toFixed(2)}{' '}
+              <span className="text-sm font-normal text-slate-500">
+                / {result.max_possible_score.toFixed(2)} marks
+              </span>
+            </div>
+            <p className="text-[11px] text-blue-700 mt-1 capitalize">
+              Grading status: {result.grading_status.replace('_', ' ')}
+            </p>
+          </div>
+        )}
+
         <div className="my-6 p-4 bg-slate-50 border border-slate-200 rounded-xl text-left text-xs text-slate-600 space-y-3">
           <div className="flex items-start space-x-2.5">
             <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
@@ -40,7 +99,9 @@ export const AssessmentCompletion: React.FC = () => {
             <div>
               <span className="font-semibold text-slate-800">Result Release Policy:</span>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                In accordance with college examination guidelines, score breakdowns and answer reviews are withheld until released by your instructor.
+                {isReleased
+                  ? 'Your instructor has released scores for this assessment.'
+                  : 'In accordance with college examination guidelines, score breakdowns and detailed reviews are withheld until released by your instructor.'}
               </p>
             </div>
           </div>

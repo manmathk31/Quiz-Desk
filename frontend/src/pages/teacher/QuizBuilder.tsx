@@ -33,6 +33,7 @@ import {
   Loader2,
   Settings,
   Users,
+  Award,
 } from 'lucide-react'
 
 export const QuizBuilder: React.FC = () => {
@@ -283,6 +284,16 @@ export const QuizBuilder: React.FC = () => {
 
         {/* Global Action Buttons */}
         <div className="flex items-center space-x-2.5">
+          {isPublished && (
+            <Link
+              to={`/teacher/quizzes/${quiz.id}/results`}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition-colors shadow-2xs"
+            >
+              <Award className="w-3.5 h-3.5 text-blue-600" />
+              <span>Results & Grading</span>
+            </Link>
+          )}
+
           <button
             type="button"
             onClick={() => setIsPreviewOpen(true)}

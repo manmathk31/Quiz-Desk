@@ -15,6 +15,7 @@ import {
   Loader2,
   FolderOpen,
   X,
+  Award,
 } from 'lucide-react'
 
 export const QuizList: React.FC = () => {
@@ -320,13 +321,24 @@ export const QuizList: React.FC = () => {
                   <span>Preview</span>
                 </button>
 
-                <Link
-                  to={`/teacher/quizzes/${quiz.id}`}
-                  className="inline-flex items-center space-x-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors"
-                >
-                  <span>Open Builder</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </Link>
+                <div className="flex items-center space-x-2">
+                  {quiz.is_published && (
+                    <Link
+                      to={`/teacher/quizzes/${quiz.id}/results`}
+                      className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition-colors"
+                    >
+                      <Award className="w-3.5 h-3.5" />
+                      <span>Results</span>
+                    </Link>
+                  )}
+                  <Link
+                    to={`/teacher/quizzes/${quiz.id}`}
+                    className="inline-flex items-center space-x-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    <span>Open Builder</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
               </div>
             </div>
           ))}

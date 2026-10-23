@@ -32,6 +32,7 @@ This document tracks all formal architectural and product decisions for **Quizde
 | [DEC-017](#dec-017-teacher-quiz-builder-question-cloning-isolation-and-immutable-version-lifecycle) | Teacher Quiz Builder & Version Lifecycle | `Confirmed` | 2026-10-23 |
 | [DEC-018](#dec-018-student-roster-ingestion-identity-alignment-and-server-authoritative-eligibility) | Student Roster Ingestion & Eligibility Gate | `Confirmed` | 2026-10-23 |
 | [DEC-019](#dec-019-secure-student-assessment-engine-shuffling-persistence-autosave-invariants-and-authoritative-grading) | Secure Assessment Delivery, Autosave & Grading | `Confirmed` | 2026-10-23 |
+| [DEC-020](#dec-020-teacher-results-management-score-adjustments-controlled-release-and-csv-export) | Teacher Results, Adjustments, Release & Export | `Confirmed` | 2026-10-23 |
 
 ---
 
@@ -341,6 +342,35 @@ This document tracks all formal architectural and product decisions for **Quizde
     - Final scores and correctness breakdowns remain concealed from students until the instructor explicitly triggers result release (`QuizVersion.is_results_released == True`).
 - **Rationale**: Eliminates client-side exam tampering, prevents timer and attempt count exploitation, protects student work against flaky connections, and guarantees academic integrity.
 - **Implications**: Schema updated in migration `0006_attempt_shuffling.py`; student endpoints mounted under `/api/v1/student/`.
+
+---
+
+### DEC-020: Teacher Results Management, Score Adjustments, Controlled Release, and CSV Export
+- **Status**: `Confirmed`
+- **Date**: 2026-10-23
+- **Decision**:
+  - **Teacher Assessment Result Diagnostics**:
+    - Teachers can query aggregate KPI score statistics (class average, highest score, lowest score, submitted count, in-progress count) calculated strictly on the server using bounded queries.
+    - Attempt tables support pagination (max 100 items per page), lifecycle status filtering, and multi-field text search across student PRN, name, and email.
+    - Detail views grant teachers full transparency: question responses, option correctness flags (`is_correct`), awarded marks, telemetry logs (window blurs / tab switches), and adjustment histories.
+  - **Authoritative Manual Grade Adjustments with Immutable Audit Trail**:
+    - Score adjustments (`POST /api/v1/quizzes/{id}/results/attempts/{attempt_id}/adjust`) require a non-blank justification reason (min 3 characters).
+    - Permitted only for finalized attempts (`is_finalized == True` or status in `submitted`, `expired`); in-progress attempts cannot be manually adjusted.
+    - Score validation: finite, non-negative, and bounded by maximum possible assessment marks ($0 \le \text{new\_score} \le \text{max\_marks}$).
+    - Preserves previous score and full revision history in `grade_adjustments` table; updates `QuizAttempt.grading_status` to `manually_adjusted`.
+    - Generates tamper-resistant `AuditEvent` with action `grade_manually_adjusted`.
+    - Safe to retry: identical scores return the current attempt state without duplicating adjustment entries.
+  - **Controlled Result Release Gate**:
+    - Result release (`POST /api/v1/quizzes/{id}/results/release`) is an explicit, authorized teacher action operating on the active published `QuizVersion` (`is_results_released = True`, `results_released_at = utc_now()`).
+    - Idempotent: repeated release requests return confirmation without mutating timestamps or generating redundant audit entries.
+    - Prior to release: student score inquiries (`GET /api/v1/student/attempts/{id}/result`) return HTTP 403 Forbidden with details withheld.
+    - Following release: students can view only their personal total score, grading status, and completion summary; answer keys and other students' marks remain concealed.
+  - **CSV Export & Formula Injection Sanitization**:
+    - Teacher-only CSV export (`GET /api/v1/quizzes/{id}/results/export`) streams results in a documented 12-column structure: `PRN, Student Name, Student Email, Division, Attempt Number, Status, Started At (UTC), Submitted At (UTC), Score, Max Marks, Grading Status, Tab Switches`.
+    - All text cells starting with `=`, `+`, `-`, `@`, `\t`, or `\r` are sanitized by prepending a single quote (`'`), neutralizing spreadsheet formula execution exploits (CSV Injection / CWE-1236).
+    - Empty assessments return standard headers without error.
+- **Rationale**: Ensures complete institutional accountability for post-exam score modifications, guarantees privacy and security for student cohorts, and delivers clean academic reporting.
+- **Implications**: Leverages existing `grade_adjustments`, `audit_events`, and `quiz_versions` tables without requiring schema migrations; endpoints mounted under `/api/v1/quizzes/{id}/results`.
 
 
 

@@ -8,7 +8,7 @@ This document is the single authoritative historical log and persistent memory f
 
 - **Project Name**: Quizdesk
 - **Core Purpose**: A high-reliability, real college quiz and assessment platform featuring separate student and teacher experiences. Engineered for scheduled examinations, strict academic integrity, automated grading, server-authoritative timings, and resilient autosaving under concurrent loads.
-- **Current Development Stage**: **Phase 6: Assessment Delivery & Real-Time Autosave Engine (Completed)**
+- **Current Development Stage**: **Phase 7: Teacher Results, Grading, Result Release and Reporting (Completed)**
 - **Working Directory**: `d:\ANUP\Quizdesk`
 - **Active Branch**: `main`
 
@@ -537,6 +537,54 @@ All items listed below represent **Confirmed** requirements and decisions agreed
   - Ran frontend linter (`oxlint`): **0 errors across 39 files**.
   - Ran frontend production build (`tsc -b && vite build`): **passed in 846ms with 0 errors**.
 
+### 2026-10-23: Phase 7 - Teacher Results, Grading, Result Release and Reporting
+- **Context & Objectives**:
+  - Implemented the complete teacher-facing assessment evaluation, grading adjustment, result release, and CSV reporting workflow.
+  - Gated student result visibility strictly by teacher authorization (`QuizVersion.is_results_released`).
+  - Added manual score adjustments with mandatory written rationale and immutable audit trails preserving original computed marks.
+  - Mitigated spreadsheet formula injection in teacher-only CSV exports.
+- **Action**: Schemas & Results Service (DEC-010, DEC-020)
+  - Created `backend/app/schemas/results.py`:
+    - Defined `QuizResultSummaryResponse`, `AttemptListItemResponse`, `AttemptListResponse`, `AttemptDetailResponse`, `QuestionResultDetail`, `GradeAdjustmentRequest`, `ReleaseResultsResponse`, and `StudentAttemptResultResponse`.
+    - Exported all schemas in `backend/app/schemas/__init__.py`.
+  - Created `backend/app/services/results_service.py`:
+    - `get_quiz_result_summary`: Calculates aggregate score statistics (mean, highest, lowest, submitted, in-progress) and active enrollment count using bounded server-side queries.
+    - `get_quiz_attempts_paginated`: Retrieves paginated attempt summaries with status filtering and multi-field search across student PRN, name, and email.
+    - `get_attempt_detail_for_teacher`: Provides full attempt diagnostic views including student selections, option correctness keys (`is_correct`), awarded marks, telemetry logs, and score adjustment histories.
+    - `adjust_attempt_grade`: Validates scores within $[0, \text{max\_marks}]$, requires non-blank reason (min 3 chars), records `GradeAdjustment`, updates `QuizAttempt.grading_status = MANUALLY_ADJUSTED`, and logs an immutable `AuditEvent`.
+    - `release_quiz_results`: Idempotently releases results on the active published `QuizVersion` (`is_results_released = True`, `results_released_at = utc_now()`) and logs an `AuditEvent`.
+    - `export_quiz_results_csv`: Streams a 12-column results table with formula injection sanitization (cells starting with `=`, `+`, `-`, `@`, `\t`, `\r` are prefixed with `'`).
+    - `get_student_attempt_result`: Authoritative student score inquiry; returns HTTP 403 Forbidden before release and student's personal score after release while keeping answer keys and other candidates' marks protected.
+- **Action**: REST Endpoints & Router Mounting
+  - Created `backend/app/api/v1/endpoints/teacher_results.py`:
+    - `GET /api/v1/quizzes/{id}/results/summary`
+    - `GET /api/v1/quizzes/{id}/results/attempts`
+    - `GET /api/v1/quizzes/{id}/results/attempts/{attempt_id}`
+    - `POST /api/v1/quizzes/{id}/results/attempts/{attempt_id}/adjust`
+    - `POST /api/v1/quizzes/{id}/results/release`
+    - `GET /api/v1/quizzes/{id}/results/export`
+    - Mounted in `backend/app/api/v1/__init__.py`.
+  - Extended `backend/app/api/v1/endpoints/student_quiz.py`:
+    - `GET /api/v1/student/attempts/{attempt_id}/result`
+- **Action**: Frontend Teacher Results Dashboard & Student Result Views
+  - Created `frontend/src/types/results.ts` and `frontend/src/services/resultsApi.ts`.
+  - Created `frontend/src/pages/teacher/QuizResults.tsx`:
+    - Top breadcrumb & quiz metadata with release status badge.
+    - 4 KPI metric cards (Total Enrolled, Submitted Count, Class Average Score, Score Range).
+    - Status dropdown filter and text search across PRN/Name/Email.
+    - Responsive attempts table with score, grading status, and tab switches.
+    - Attempt detail modal with question breakdown, proctoring telemetry log, adjustment audit history, and manual adjustment form.
+    - Release results confirmation modal.
+    - CSV export button with instant download and visual feedback.
+  - Updated `QuizList.tsx` and `QuizBuilder.tsx` to add "Results & Grading" entry points for published quizzes.
+  - Updated `AssessmentCompletion.tsx` to fetch and render student score upon instructor release or display withhold notice.
+  - Mounted `/teacher/quizzes/:quizId/results` route in `frontend/src/App.tsx`.
+- **Action**: Automated Testing & Verification
+  - Created `backend/tests/test_teacher_results.py` with 9 integration tests covering cross-teacher isolation (404), student role denial (403), summary calculations, paginated filtering and search, attempt detail diagnostics, manual adjustment validation & audit trails, idempotent result release, student score retrieval, and CSV formula injection sanitization.
+  - Ran full backend pytest suite: **127 passed in 6.11s**.
+  - Ran frontend linter (`oxlint`): **0 errors across 42 files**.
+  - Ran frontend production build (`tsc -b && vite build`): **passed in 885ms with 0 errors**.
+
 ---
 
 ## 5. Commands Executed & Verified Outcomes
@@ -559,12 +607,12 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `.\.venv\Scripts\pip.exe install pyjwt==2.10.1` | `d:\ANUP\Quizdesk` | 0 | Installed PyJWT for HMAC-SHA256 token verification. |
 | `.\.venv\Scripts\pip.exe install python-multipart==0.0.20` | `d:\ANUP\Quizdesk` | 0 | Installed python-multipart for file upload parsing. |
 | `.\.venv\Scripts\pip.exe install openpyxl==3.1.5` | `d:\ANUP\Quizdesk` | 0 | Installed openpyxl for genuine Excel workbook support. |
-| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `118 passed in 5.97s` (all models, migrations, auth, profile, CORS, CSV/XLSX parser, question bank, quiz builder, roster ingestion, and assessment delivery tests passing). |
+| `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v` | `d:\ANUP\Quizdesk` | 0 | `127 passed in 6.11s` (all models, migrations, auth, profile, CORS, CSV/XLSX parser, question bank, quiz builder, roster ingestion, assessment delivery, and teacher results/adjustments/release tests passing). |
 | `npx -y create-vite@latest frontend --template react-ts` | `d:\ANUP\Quizdesk` | 0 | Scaffolded React + TypeScript project. |
 | `npm install react-router-dom lucide-react; npm i -D tailwindcss @tailwindcss/vite` | `d:\ANUP\Quizdesk\frontend` | 0 | 50 packages installed with 0 vulnerabilities. |
 | `npm install @supabase/supabase-js` | `d:\ANUP\Quizdesk\frontend` | 0 | Added Supabase browser client with 0 vulnerabilities. |
-| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 39 files. |
-| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 846ms. |
+| `npm run lint` (oxlint) | `d:\ANUP\Quizdesk\frontend` | 0 | 0 errors across 42 files. |
+| `npm run build` | `d:\ANUP\Quizdesk\frontend` | 0 | TypeScript check and Vite build passed in 885ms. |
 | `alembic -c backend/alembic.ini history` | `d:\ANUP\Quizdesk` | 0 | `0001_initial_schema -> 0002_integrity -> 0003_question_bank -> 0004_question_difficulty -> 0005_assignment_lifecycle -> 0006_attempt_shuffling (head)`. |
 | `alembic -c backend/alembic.ini upgrade 0005_assignment_lifecycle:0006_attempt_shuffling --sql` | `d:\ANUP\Quizdesk` | 0 | Generated valid offline PostgreSQL DDL for attempt shuffling columns, client timestamp, and student status index. |
 | `alembic -c backend/alembic.ini downgrade 0006_attempt_shuffling:0005_assignment_lifecycle --sql` | `d:\ANUP\Quizdesk` | 0 | Verified clean reversal DDL for migration 0006. |
@@ -583,14 +631,14 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ## 7. Tests Performed & Actual Results
 - **Filesystem & Git Verification**:
   - Confirmed `.venv/`, `frontend/node_modules/`, and `frontend/dist/` are ignored by Git.
-- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API, Assessment API)**:
+- **Backend Test Suite (Health, Models, Auth & Roles, Profile Endpoint, CORS, CSV/XLSX Parser, Question Bank API, Quizzes API, Roster Parser, Roster API, Eligibility API, Assessment API, Teacher Results API)**:
   - Executed: `.\.venv\Scripts\python.exe -m pytest -c backend/pytest.ini backend/tests -v`
-  - Results: `118 passed in 5.97s`.
+  - Results: `127 passed in 6.11s`.
 - **Frontend Linter & Production Build Verification**:
-  - Executed: `npm run lint` (oxlint): 0 errors across 39 files.
-  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2012 modules transformed in 846ms.
+  - Executed: `npm run lint` (oxlint): 0 errors across 42 files.
+  - Executed: `npm run build` (`tsc -b && vite build`): Successful compilation, 2014 modules transformed in 885ms.
 - **Alembic Offline Migration Checks**:
-  - Verified `upgrade 0005_assignment_lifecycle:0006_attempt_shuffling --sql` and `downgrade 0006_attempt_shuffling:0005_assignment_lifecycle --sql`.
+  - Verified `upgrade 0005_assignment_lifecycle:0006_attempt_shuffling --sql` and `downgrade 0006_attempt_shuffling:0005_assignment_lifecycle --sql`. Validated migration chain 0001 -> 0006.
 
 ---
 
@@ -608,14 +656,14 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 ---
 
 ## 9. Deviations from Agreed Decisions
-- **None**: All changes strictly adhere to DEC-001 through DEC-019.
+- **None**: All changes strictly adhere to DEC-001 through DEC-020.
 
 ---
 
 ## 10. Recommended Next Task
 
-**Task**: **`TASK-701`: Automated grading engine & teacher review dashboard (Phase 7)**
-- Implement teacher assessment review dashboard, grade adjustments with mandatory audit logs, and result release workflow.
+**Task**: **`TASK-801`: Backend unit and API integration tests (Phase 8: Testing, Security Verification & Concurrent Load Simulation)**
+- Build comprehensive test suites, component tests, end-to-end user flows, and realistic concurrent-load simulation for high-concurrency college assessments.
 
 
 

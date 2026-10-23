@@ -15,6 +15,7 @@ import { TeacherPortalPlaceholder } from './pages/TeacherPortalPlaceholder'
 import { QuestionBank } from './pages/teacher/QuestionBank'
 import { QuizList } from './pages/teacher/QuizList'
 import { QuizBuilder } from './pages/teacher/QuizBuilder'
+import { QuizResults } from './pages/teacher/QuizResults'
 
 export const App: React.FC = () => {
   return (
@@ -82,6 +83,14 @@ export const App: React.FC = () => {
               element={
                 <RequireRole allowedRoles={['teacher', 'admin']}>
                   <QuizBuilder />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/teacher/quizzes/:quizId/results"
+              element={
+                <RequireRole allowedRoles={['teacher', 'admin']}>
+                  <QuizResults />
                 </RequireRole>
               }
             />

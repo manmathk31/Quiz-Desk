@@ -29,6 +29,7 @@ from app.schemas.assessment import (
     TelemetryEventResponse,
     AttemptSubmissionResponse,
 )
+from app.schemas.results import StudentAttemptResultResponse
 
 router = APIRouter(prefix="/student", tags=["Student Assessments"])
 
@@ -173,3 +174,19 @@ def submit_assessment_attempt(
         )
 
     return finalize_and_grade_attempt(db, attempt, is_expired=False)
+
+
+@router.get("/attempts/{attempt_id}/result", response_model=StudentAttemptResultResponse)
+def get_student_attempt_result_endpoint(
+    attempt_id: uuid.UUID,
+    current_user: User = Depends(require_student),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve authoritative personal score for a student after instructor release (DEC-010).
+    - Caller must own the attempt.
+    - Results withheld until released by course instructor (returns HTTP 403).
+    - Protects correct answer keys and class-wide score distributions.
+    """
+    from app.services.results_service import get_student_attempt_result
+    return get_student_attempt_result(db, attempt_id, current_user)

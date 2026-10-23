@@ -109,10 +109,10 @@ This document tracks all implementation tasks for **Quizdesk**. Each task is ass
 
 | Task ID | Task Title | Status | Dependencies | Acceptance Criteria |
 |---|---|---|---|---|
-| `TASK-701` | Automated grading engine | `Not started` | `TASK-605` | - Calculates raw score based on correct options, partial credit (for multi-answer), and negative marking.<br>- Sets initial result status to `WITHHELD`. |
-| `TASK-702` | Teacher review dashboard & CSV export | `Not started` | `TASK-701` | - Teacher views grade distribution, candidate attempt breakdown, and tab-switch telemetry.<br>- Export full results to CSV. |
-| `TASK-703` | Manual grade adjustment API with mandatory audit log | `Not started` | `TASK-702` | - Adjusting marks requires mandatory text rationale.<br>- Inserts immutable audit record in `audit_logs` table. |
-| `TASK-704` | Result release workflow & student score view | `Not started` | `TASK-702`, `TASK-703` | - Teacher triggers release of results.<br>- Students can view only their personal total marks; answer keys remain protected. |
+| `TASK-701` | Automated grading engine | `Completed` | `TASK-605` | - Calculates raw score based on correct options, partial credit (for multi-answer policies: `all_or_nothing`, `partial_no_penalty`, `partial_with_penalty`), negative marking, and tab-switch penalties.<br>- Sets initial result status to withheld (`is_results_released=False`). |
+| `TASK-702` | Teacher review dashboard & CSV export | `Completed` | `TASK-701` | - Teacher views grade distribution, summary metrics (average, min, max, submitted, in-progress), candidate attempt breakdown, question responses with answer keys, and tab-switch telemetry.<br>- Export full results to CSV with formula injection sanitization. |
+| `TASK-703` | Manual grade adjustment API with mandatory audit log | `Completed` | `TASK-702` | - Adjusting marks requires mandatory text rationale (min 3 chars).<br>- Preserves previous scores and revision history in `grade_adjustments` table.<br>- Inserts immutable audit record in `audit_events` table.<br>- Rejects in-progress attempts and scores outside $[0, \text{max\_marks}]$. |
+| `TASK-704` | Result release workflow & student score view | `Completed` | `TASK-702`, `TASK-703` | - Teacher triggers release of results idempotently.<br>- Prior to release, student inquiries return 403 Forbidden with score withheld.<br>- Following release, students can view only their personal total score and completion status; answer keys and other students' marks remain protected. |
 
 ---
 

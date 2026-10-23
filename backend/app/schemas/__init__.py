@@ -54,6 +54,20 @@ from app.schemas.assessment import (
     AttemptSubmissionResponse,
 )
 
+from app.schemas.results import (
+    QuizResultSummaryResponse,
+    AttemptListItemResponse,
+    AttemptListResponse,
+    QuestionOptionResultDetail,
+    QuestionResultDetail,
+    GradeAdjustmentItem,
+    TelemetryEventItem,
+    AttemptDetailResponse,
+    GradeAdjustmentRequest,
+    ReleaseResultsResponse,
+    StudentAttemptResultResponse,
+)
+
 __all__ = [
     "UserResponse",
     "QuestionOptionCreate",
@@ -98,6 +112,17 @@ __all__ = [
     "TelemetryEventRequest",
     "TelemetryEventResponse",
     "AttemptSubmissionResponse",
+    "QuizResultSummaryResponse",
+    "AttemptListItemResponse",
+    "AttemptListResponse",
+    "QuestionOptionResultDetail",
+    "QuestionResultDetail",
+    "GradeAdjustmentItem",
+    "TelemetryEventItem",
+    "AttemptDetailResponse",
+    "GradeAdjustmentRequest",
+    "ReleaseResultsResponse",
+    "StudentAttemptResultResponse",
 ]
 
 
