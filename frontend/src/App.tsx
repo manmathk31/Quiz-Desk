@@ -76,15 +76,10 @@ export const App: React.FC = () => {
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
 
+            {/* Public System Foundation & Live Health Diagnostics */}
+            <Route path="/status" element={<Overview />} />
+
             {/* Protected Technical & System Diagnostics Routes (Administrator Only) */}
-            <Route
-              path="/status"
-              element={
-                <RequireRole allowedRoles={['admin']}>
-                  <Overview />
-                </RequireRole>
-              }
-            />
             <Route
               path="/admin/overview"
               element={

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X, User as UserIcon, LogOut, LogIn } from 'lucide-react'
+import { Menu, X, User as UserIcon, LogOut, LogIn, GraduationCap, BookOpen } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { Logo } from '../common/Logo'
 
@@ -91,13 +91,31 @@ export const Header: React.FC = () => {
               </div>
             ) : (
               <div className="flex items-center space-x-3">
-                <Link
-                  to="/student/login"
-                  className="flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md shadow-blue-600/20 hover:scale-[1.02]"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Take Assessment</span>
-                </Link>
+                {location.pathname.startsWith('/teacher') ? (
+                  <Link
+                    to="/student/login"
+                    className="flex items-center space-x-1.5 px-3.5 py-1.5 border border-slate-700 hover:border-slate-600 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    <GraduationCap className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Student Entrance</span>
+                  </Link>
+                ) : location.pathname === '/student/login' ? (
+                  <Link
+                    to="/teacher/login"
+                    className="flex items-center space-x-1.5 px-3.5 py-1.5 border border-slate-700 hover:border-slate-600 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Faculty Portal</span>
+                  </Link>
+                ) : (
+                  <Link
+                    to="/student/login"
+                    className="flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md shadow-blue-600/20 hover:scale-[1.02]"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Take Assessment</span>
+                  </Link>
+                )}
               </div>
             )}
           </div>
@@ -154,14 +172,34 @@ export const Header: React.FC = () => {
               </div>
             ) : (
               <div className="pt-1">
-                <Link
-                  to="/student/login"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-center space-x-1.5 py-2.5 px-3 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-sm"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>Take Assessment</span>
-                </Link>
+                {location.pathname.startsWith('/teacher') ? (
+                  <Link
+                    to="/student/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-center space-x-1.5 py-2.5 px-3 border border-slate-700 bg-slate-800 text-slate-200 rounded-lg text-sm font-medium"
+                  >
+                    <GraduationCap className="w-4 h-4 text-blue-400" />
+                    <span>Student Entrance</span>
+                  </Link>
+                ) : location.pathname === '/student/login' ? (
+                  <Link
+                    to="/teacher/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-center space-x-1.5 py-2.5 px-3 border border-slate-700 bg-slate-800 text-slate-200 rounded-lg text-sm font-medium"
+                  >
+                    <BookOpen className="w-4 h-4 text-indigo-400" />
+                    <span>Faculty Portal</span>
+                  </Link>
+                ) : (
+                  <Link
+                    to="/student/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-center space-x-1.5 py-2.5 px-3 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-sm"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Take Assessment</span>
+                  </Link>
+                )}
               </div>
             )}
           </div>

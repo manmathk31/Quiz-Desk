@@ -1083,6 +1083,33 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - Frontend build: `tsc -b && vite build` built in 741ms with 0 errors.
    - Frontend lint: 0 errors across 51 files.
 
+---
+
+## 11. Public System Diagnostics, Role-Contextual Header & Sleek Authentication Overhaul (2026-10-24)
+
+### Execution Summary
+1. **Public Diagnostics Route (`frontend/src/App.tsx`, `frontend/src/pages/Overview.tsx`)**:
+   - Removed `<RequireRole allowedRoles={['admin']}>` protection from `/status` so visitors directly access system diagnostics without bouncing to `/student/login`.
+   - Retained administrative overview at `/admin/overview`.
+   - Enhanced `Overview.tsx` to measure live millisecond round-trip latency (`/health/live`) and PostgreSQL database connectivity (`/health/ready`).
+   - Added live subsystem telemetry cards for API Gateway, Database, Supabase Auth, and Cloudflare Pages CDN.
+2. **Role-Contextual Header Navigation (`frontend/src/components/layout/Header.tsx`, `Footer.tsx`)**:
+   - Dynamically switches top-right action button:
+     - On faculty routes (`/teacher/*`): shows "Student Entrance" instead of awkward "Take Assessment".
+     - On student login (`/student/login`): shows "Faculty Portal".
+     - On root and public routes: displays primary "Take Assessment".
+   - Added persistent links to System Status, Student Entrance, and Faculty Portal in `Footer.tsx`.
+3. **Modern, Sleek Authentication Redesign (`StudentLogin`, `TeacherLogin`, `AdminLogin`, `TeacherForgotPassword`, `TeacherResetPassword`)**:
+   - Layered background styling with subtle atmospheric ambient glow orbs.
+   - Frosted glassmorphism cards (`backdrop-blur-md`, `border-slate-200/80`, `shadow-xl`) with custom top gradient accent bars.
+   - Input groups with leading icons (`Mail`, `Lock`, `KeyRound`) and smooth focus states.
+   - Interactive password show/hide reveal toggles (`Eye` / `EyeOff`).
+   - High-contrast gradient action buttons with loading spinners (`Loader2`).
+   - Cross-portal bottom navigation links for seamless portal switching.
+4. **Verification**:
+   - Backend pytest suite: 173 passed in 13.19s.
+   - Frontend build: `tsc -b && vite build` built in 862ms with 0 errors.
+
 
 
 
