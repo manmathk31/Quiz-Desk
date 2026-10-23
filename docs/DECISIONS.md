@@ -460,25 +460,28 @@ This document tracks all formal architectural and product decisions for **Quizde
 
 ---
 
-### DEC-023: Production Hosting Architecture & Container Packaging (Cloudflare Pages + Hugging Face Spaces + Supabase)
+### DEC-023: Production Hosting Architecture & Container Packaging (Cloudflare Pages + Render + Supabase)
 - **Status**: `Confirmed`
-- **Date**: 2026-10-23
+- **Date**: 2026-10-24
 - **Decision**:
   - **Frontend Hosting (Cloudflare Pages - Primary)**:
     - Deployed as a static single-page application (SPA) from the `frontend/` directory using Vite build output (`dist`).
-    - Client-side React Router rewrites configured via `frontend/public/_redirects` (`/* /index.html 200`), which is automatically copied to `dist/` on build.
+    - Client-side React Router rewrites configured via `frontend/public/_redirects` (`/* /index.html 200`), auto-copied to `dist/` on build.
     - Environment variables limited strictly to public client properties: `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-    - Plan & Institutional Policy Advantage: Cloudflare Pages is 100% free with **unlimited bandwidth, unlimited requests, and no non-commercial or institutional restrictions** (unlike Vercel Hobby's non-commercial clause). Vercel is retained as a tested secondary fallback via `frontend/vercel.json`.
-  - **Backend Hosting (Hugging Face Spaces - Docker)**:
-    - Packaged via production Docker container with Python 3.12 slim base.
-    - Hugging Face Spaces port requirement: listens on internal default port `7860` (`EXPOSE 7860`, `CMD ... --port ${PORT:-7860}`) while maintaining dynamic `$PORT` compatibility.
-    - Hugging Face Spaces permission requirement: runs under unprivileged non-root user `user` with `UID 1000`.
-    - Lifecycle and cold start: Free tier provides 2 vCPUs and 16 GB RAM with a 48-hour inactivity sleep timeout. Cold boot takes ~15–30s. Background keep-alive pingers are strictly prohibited. Instead, the operational procedure mandates pre-warming the backend 10–15 minutes before scheduled exam windows to ensure zero student disruption.
-    - Secrets management: All sensitive backend credentials (`DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `ADMIN_BOOTSTRAP_TOKEN`, `ENVIRONMENT=production`) are configured through the Hugging Face Space Settings "Variables and secrets" vault.
+    - Plan Advantage: Cloudflare Pages is 100% free with **unlimited bandwidth, unlimited requests, and no non-commercial restrictions**.
+  - **Backend Hosting (Render - Web Service via Docker)**:
+    - Packaged via production Docker container (`backend/Dockerfile`) with Python 3.11 slim base.
+    - Render Web Service configuration: Root Directory set to `backend`, Environment set to `Docker`.
+    - Port handling: Render automatically injects the `$PORT` environment variable (typically 10000). The container binds dynamically via `CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]`.
+    - Container security: Runs under unprivileged non-root user `user` with `UID 1000`.
+    - Health check path: Configured in Render Dashboard to `/health/live` (for container liveness probe).
+    - Region selection: Singapore (`singapore`) is recommended as it is geographically closest to Supabase's `ap-south-1` region, minimizing database WAN latency.
+    - Tier options: Free tier (512 MB RAM, spins down after 15 minutes of inactivity; cold start ~50s) is suitable for staging and low-stakes pilots; Starter tier ($7.00/mo) provides persistent zero-sleep compute for real exams.
+    - Secrets management: All sensitive backend credentials (`DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `ADMIN_BOOTSTRAP_TOKEN`, `ENVIRONMENT=production`) are configured in the Render Dashboard Environment tab.
   - **Database & Authentication (Supabase)**:
     - Retains existing Supabase project for PostgreSQL 17 and Supabase Auth.
     - Connected via Supabase Session Pooler (port 5432) with calibrated bounds (`DB_POOL_SIZE=8`, `DB_MAX_OVERFLOW=4`) to honor free-tier connection limits while servicing 30+ concurrent students.
     - Production CORS origins and Supabase Auth redirect URLs explicitly configured with the assigned Cloudflare Pages domain (`https://<project-name>.pages.dev`).
     - Database state verified: 0 active test users, 0 test quizzes, 0 test attempts, and 244 immutable audit records retained.
-- **Rationale**: Cloudflare Pages delivers unmetered bandwidth, zero licensing conflicts for colleges, instantaneous edge routing, and clean integration with Hugging Face Spaces and Supabase.
-- **Implications**: SPA routing rule established in `frontend/public/_redirects`, container configuration updated in `backend/Dockerfile`, and step-by-step Cloudflare Pages deployment documented in `docs/OPERATIONS_RUNBOOK.md`.
+- **Rationale**: Replaces Hugging Face Spaces (which introduced payment barriers for Docker) with Render's battle-tested Docker Web Service, paired with Cloudflare Pages for unmetered edge delivery and Supabase for managed relational storage.
+- **Implications**: Container configuration updated in `backend/Dockerfile` with dynamic `$PORT` fallback (8000), and step-by-step deployment guide updated in `docs/OPERATIONS_RUNBOOK.md`.

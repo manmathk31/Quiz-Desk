@@ -198,53 +198,55 @@ For an initial college pilot of approximately 30–50 students, the simplest, mo
 
 ---
 
-## 9. Step-by-Step Production Deployment Guide (Cloudflare Pages + Hugging Face Spaces + Supabase)
+## 9. Step-by-Step Production Deployment Guide (Cloudflare Pages + Render + Supabase)
 
-### 9.1 Backend Deployment (Hugging Face Spaces via Docker)
-Hugging Face Spaces provides free 2 vCPU / 16 GB RAM Docker hosting with a **48-hour inactivity sleep window** (dramatically superior to typical 15-minute free tiers).
+### 9.1 Backend Deployment (Render via Docker Web Service)
+Render provides fully managed container hosting with native Git integration, automatic SSL, and standard container lifecycle management.
 
-1. **Create Hugging Face Space**:
-   - Log into [Hugging Face](https://huggingface.co) and click **New Space**.
-   - **Space Name**: `quizdesk-api` (or institution equivalent).
-   - **License**: `mit` or `apache-2.0`.
-   - **SDK**: Select **Docker** (Blank template).
-   - **Space Hardware**: Free tier (2 vCPU · 16 GB RAM).
-   - **Visibility**: Public (required for free public API routing; application security is enforced at JWT/API level).
+1. **Create Web Service on Render**:
+   - Log into [Render Dashboard](https://dashboard.render.com).
+   - Click **New +** (top right) $\rightarrow$ select **Web Service**.
+   - Choose **Build and deploy from a Git repository** $\rightarrow$ select your GitHub repository (`manmathk31/Quiz-Desk`).
+   - Fill in service settings:
+     - **Name**: `quizdesk-api` (or institution equivalent).
+     - **Region**: **Singapore** (`singapore`) *(Recommended: closest geographic location to Supabase `ap-south-1`, reducing DB latency to ~30ms)*.
+     - **Branch**: `main`.
+     - **Root Directory**: `backend` *(CRITICAL: directs Render to build from the backend directory using `backend/Dockerfile`)*.
+     - **Runtime / Environment**: **Docker**.
+     - **Instance Type**:
+       - **Free Tier** ($0/mo): 512 MB RAM, 0.1 CPU. Sleeps after 15 minutes of inactivity; cold start takes ~50s.
+       - **Starter Tier** ($7/mo): 512 MB RAM, 0.5 dedicated CPU. Never sleeps; recommended for live assessment examination periods.
 
-2. **Repository & Directory Structure**:
-   - The root of the Space must contain the contents of `backend/` (specifically `Dockerfile`, `requirements.txt`, `alembic.ini`, `app/`, and `alembic/`).
-   - You can push the backend code directly to the Space's Git remote or configure GitHub sync.
+2. **Configure Health Check Path**:
+   - Under **Advanced Settings**, find **Health Check Path**.
+   - Set to: `/health/live` (or `/health`).
+   - Render will continuously probe this path and only route traffic once the container returns HTTP 200 OK.
 
-3. **Container Compatibility Invariants**:
-   - **Port**: Hugging Face Spaces routes internal traffic to port `7860`. The `backend/Dockerfile` exposes and defaults to `7860` (`CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]`).
-   - **User UID**: Hugging Face Spaces requires running as unprivileged user with `UID 1000`. `backend/Dockerfile` creates user `user` with `UID 1000`.
-   - **Health Probe**: Liveness probe queries `http://localhost:${PORT:-7860}/health/live`.
+3. **Configure Environment Variables**:
+   Under the **Environment** tab on Render:
+   - `ENVIRONMENT`: `production`
+   - `ALLOW_DESTRUCTIVE_RESET`: `false`
+   - `DATABASE_URL`: `postgresql+psycopg://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres` (Use Supabase Session Pooler URL with port 5432).
+   - `DB_POOL_SIZE`: `8`
+   - `DB_MAX_OVERFLOW`: `4`
+   - `DB_POOL_TIMEOUT`: `30`
+   - `DB_POOL_RECYCLE`: `1800`
+   - `SUPABASE_URL`: `https://[PROJECT_REF].supabase.co`
+   - `SUPABASE_ANON_KEY`: `[YOUR_PUBLIC_ANON_KEY]`
+   - `SUPABASE_SERVICE_ROLE_KEY`: `[YOUR_PRIVATE_SERVICE_ROLE_KEY]`
+   - `SUPABASE_JWT_SECRET`: `[YOUR_SUPABASE_JWT_SECRET]`
+   - `SUPABASE_JWT_ALGORITHM`: `HS256`
+   - `SUPABASE_JWT_AUDIENCE`: `authenticated`
+   - `CORS_ORIGINS`: `["https://[YOUR_PAGES_APP].pages.dev", "http://localhost:5173"]`
+   - `ADMIN_EMAIL`: `admin@institution.edu`
+   - `ADMIN_NAME`: `Institutional Administrator`
+   - `ADMIN_BOOTSTRAP_TOKEN`: Secure high-entropy random string (e.g. `openssl rand -hex 32`).
 
-4. **Configure Space Secrets & Environment Variables**:
-   In Hugging Face Space **Settings > Variables and secrets**:
-   - Under **Secrets** (Encrypted, server-side only):
-     - `DATABASE_URL`: `postgresql+psycopg://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres` (Use Supabase Session Pooler URL with port 5432).
-     - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase private service role key.
-     - `SUPABASE_JWT_SECRET`: Your Supabase HS256 JWT Secret.
-     - `ADMIN_BOOTSTRAP_TOKEN`: Secure high-entropy random string (e.g. `openssl rand -hex 32`).
-   - Under **Variables** (Public configuration):
-     - `ENVIRONMENT`: `production`
-     - `ALLOW_DESTRUCTIVE_RESET`: `false`
-     - `DB_POOL_SIZE`: `8`
-     - `DB_MAX_OVERFLOW`: `4`
-     - `DB_POOL_TIMEOUT`: `30`
-     - `DB_POOL_RECYCLE`: `1800`
-     - `SUPABASE_URL`: `https://[PROJECT_REF].supabase.co`
-     - `SUPABASE_JWT_ALGORITHM`: `HS256`
-     - `SUPABASE_JWT_AUDIENCE`: `authenticated`
-     - `CORS_ORIGINS`: `["https://[YOUR_PAGES_APP].pages.dev", "http://localhost:5173"]`
-     - `ADMIN_EMAIL`: `admin@institution.edu`
-     - `ADMIN_NAME`: `Institutional Administrator`
-
-5. **Cold-Start & Sleep Operational Policy**:
-   - HF Spaces free tier sleeps after **48 hours** of zero incoming traffic. Cold start takes 15–30 seconds.
-   - **Scheduled pings or artificial keep-alive bots are strictly prohibited.**
-   - **Pre-Warming Routine**: Exam administrators or teachers should simply access the portal or hit `GET /health` 10–15 minutes before scheduled quiz start. The space will wake up immediately and remain active continuously for the next 48 hours, fully covering all assessment windows.
+4. **Port Handling & Startup**:
+   - Render automatically injects the `$PORT` environment variable (typically `10000`).
+   - The container CMD dynamically binds to `$PORT`:
+     `CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]`
+   - Once deployed, your backend URL will be: `https://quizdesk-api.onrender.com`.
 
 ---
 

@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create non-root user (UID 1000) for Hugging Face Spaces compatibility
+# Create non-root user (UID 1000) for security hardening
 RUN useradd -m -u 1000 user
 USER user
 ENV HOME=/home/user \
@@ -22,12 +22,12 @@ WORKDIR $HOME/app
 # Copy backend source code
 COPY --chown=user . $HOME/app
 
-# Expose port (default 7860 for Hugging Face Spaces; overridable via $PORT)
-EXPOSE 7860
+# Expose default port (dynamically overridden by Render via $PORT)
+EXPOSE 8000
 
 # Container health probe
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:${PORT:-7860}/health/live || exit 1
+  CMD curl -f http://localhost:${PORT:-8000}/health/live || exit 1
 
-# Start ASGI application with dynamic PORT fallback (defaults to 7860 for HF Spaces)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Start ASGI application with dynamic PORT fallback (defaults to 8000)
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

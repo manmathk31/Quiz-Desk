@@ -163,12 +163,12 @@ This document tracks all implementation tasks for **Quizdesk**. Each task is ass
 ---
 
 ## Phase 11: Codebase Cleanup, Runtime Cleanup, and Final Deployment Preparation
-**Goal**: Prepare the existing Quizdesk repository for a clean, maintainable deployment on Cloudflare Pages (Frontend), Hugging Face Spaces (Backend Docker), and Supabase (Auth & PostgreSQL).
+**Goal**: Prepare the existing Quizdesk repository for a clean, maintainable deployment on Cloudflare Pages (Frontend), Render (Backend Docker Web Service), and Supabase (Auth & PostgreSQL).
 
 | Task ID | Task Title | Status | Dependencies | Acceptance Criteria |
 |---|---|---|---|---|
 | `TASK-1101` | Codebase & runtime inspection | `Completed` | Phase 10 | - Inspect git status and commit baseline `3d6b619`.<br>- Inspect Windows processes: verify zero orphaned Quizdesk uvicorn/vite/node processes running.<br>- Audit live Supabase database state: confirm 0 synthetic test users, 0 quizzes, 0 attempts, and 244 audit records preserved. |
-| `TASK-1102` | Codebase cleanup & configuration hardening | `Completed` | `TASK-1101` | - Remove obsolete placeholder `frontend/src/pages/StudentPortalPlaceholder.tsx`.<br>- Eliminate hardcoded `localhost:8000` URLs from `frontend/src/pages/Home.tsx` and `frontend/src/pages/Overview.tsx`.<br>- Update `backend/app/core/config.py` Pydantic `SettingsConfigDict` to support `(".env", "backend/.env")`.<br>- Adapt `backend/Dockerfile` for Hugging Face Spaces (non-root `user` UID 1000, port default `7860`, dynamic `$PORT` fallback, health probe on port 7860). |
+| `TASK-1102` | Codebase cleanup & configuration hardening | `Completed` | `TASK-1101` | - Remove obsolete placeholder `frontend/src/pages/StudentPortalPlaceholder.tsx`.<br>- Eliminate hardcoded `localhost:8000` URLs from `frontend/src/pages/Home.tsx` and `frontend/src/pages/Overview.tsx`.<br>- Update `backend/app/core/config.py` Pydantic `SettingsConfigDict` to support `(".env", "backend/.env")`.<br>- Adapt `backend/Dockerfile` for Render (non-root `user` UID 1000, dynamic `$PORT` fallback to 8000, container health probe). |
 | `TASK-1103` | Automated verification suite | `Completed` | `TASK-1102` | - Run backend tests: 170/170 passed in 11.67s.<br>- Run frontend linter (`oxlint`): 0 errors.<br>- Run frontend build (`tsc -b && vite build`): completed in 1.10s with 0 errors. |
-| `TASK-1104` | Deployment checklist & documentation synchronization | `Completed` | `TASK-1102`, `TASK-1103` | - Record `DEC-023` in `docs/DECISIONS.md`.<br>- Update Section 9 of `docs/OPERATIONS_RUNBOOK.md` with detailed Hugging Face Spaces, Cloudflare Pages, migration, and rehearsal instructions.<br>- Update `docs/PROJECT_LOG.md` with complete Phase 11 operational log and step-by-step pilot readiness. |
+| `TASK-1104` | Deployment checklist & documentation synchronization | `Completed` | `TASK-1102`, `TASK-1103` | - Record `DEC-023` in `docs/DECISIONS.md`.<br>- Update Section 9 of `docs/OPERATIONS_RUNBOOK.md` with detailed Render, Cloudflare Pages, migration, and rehearsal instructions.<br>- Update `docs/PROJECT_LOG.md` with complete Phase 11 operational log and step-by-step pilot readiness. |
 
