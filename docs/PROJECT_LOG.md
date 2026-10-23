@@ -995,6 +995,33 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 | `npm run build` | `frontend` | 0 | Built `frontend/dist` in 1.10s with zero TypeScript errors. |
 | `git status` | Repository | 0 | Verified clean staged/unstaged changes; zero untracked files. |
 
+---
+
+## 7. Faculty Portal Abstraction & Modern College Landing Page (2026-10-24)
+
+### Execution Summary
+1. **Complete Faculty Portal Abstraction**:
+   - Removed all `Faculty Portal` / `Faculty Sign In` links, buttons, and mobile menu items from `frontend/src/components/layout/Header.tsx`.
+   - The public interface exclusively presents `Student Sign In`.
+   - Faculty members receive a dedicated direct entry URL (`https://quizdesk-mitaoe.pages.dev/teacher/login`), preventing credential spamming by students.
+2. **Modern Institutional Academic Home Page (`frontend/src/pages/Home.tsx`)**:
+   - Built a sleek, minimal, modern academic home page designed specifically for MIT Academy of Engineering.
+   - Features:
+     - Hero banner with institutional branding (`MIT Academy of Engineering • Official Examination Portal`) and primary CTA button (`Enter Student Examination Portal`).
+     - 3 Institutional Exam Architecture pillars: Institutional Identity (`@mitaoe.ac.in`), Server-Synchronized Timing, and Academic Integrity Guard.
+     - Student Examination Guidelines card highlighting browser recommendations, PRN verification, fullscreen requirements, and reconnect autosave recovery.
+3. **Intelligent Root Gateway (`frontend/src/App.tsx`)**:
+   - Updated `RootGateway`: unauthenticated visitors visiting `/` render `<Home />`.
+   - Authenticated students visiting `/` are routed to `/student/portal`.
+   - Authenticated teachers visiting `/` are routed to `/teacher/quizzes`.
+   - Authenticated admins visiting `/` are routed to `/admin/dashboard`.
+   - Restored administrative overview route `/admin/overview` to `<Overview />` diagnostics.
+4. **Verification**:
+   - `npm run build`: Zero errors; built in 876ms (`dist/index.html`, `dist/assets/index-*.js`).
+   - `npm run lint`: 0 errors.
+   - Files modified: `frontend/src/components/layout/Header.tsx`, `frontend/src/pages/Home.tsx`, `frontend/src/App.tsx`, `docs/DECISIONS.md`, `docs/TASK_TRACKER.md`, `docs/PROJECT_LOG.md`.
+
+
 
 
 

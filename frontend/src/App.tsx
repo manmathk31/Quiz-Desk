@@ -42,7 +42,7 @@ const RootGateway: React.FC = () => {
   }
 
   if (!session) {
-    return <Navigate to="/student/login" replace />
+    return <Home />
   }
 
   if (role === 'student') {
@@ -57,7 +57,7 @@ const RootGateway: React.FC = () => {
     return <Navigate to="/admin/dashboard" replace />
   }
 
-  return <Navigate to="/student/login" replace />
+  return <Home />
 }
 
 export const App: React.FC = () => {
@@ -89,7 +89,7 @@ export const App: React.FC = () => {
               path="/admin/overview"
               element={
                 <RequireRole allowedRoles={['admin']}>
-                  <Home />
+                  <Overview />
                 </RequireRole>
               }
             />

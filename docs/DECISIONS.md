@@ -485,3 +485,23 @@ This document tracks all formal architectural and product decisions for **Quizde
     - Database state verified: 0 active test users, 0 test quizzes, 0 test attempts, and 244 immutable audit records retained.
 - **Rationale**: Replaces Hugging Face Spaces (which introduced payment barriers for Docker) with Render's battle-tested Docker Web Service, paired with Cloudflare Pages for unmetered edge delivery and Supabase for managed relational storage.
 - **Implications**: Container configuration updated in `backend/Dockerfile` with dynamic `$PORT` fallback (8000), and step-by-step deployment guide updated in `docs/OPERATIONS_RUNBOOK.md`.
+
+---
+
+### DEC-024: Faculty Portal Abstraction and Institutional Academic Landing Page
+- **Status**: `Confirmed`
+- **Date**: 2026-10-24
+- **Decision**:
+  - **Faculty Portal Abstraction & Role Boundary Protection**:
+    - Completely remove all teacher / faculty login links, navigation buttons, and toggles from public- and student-facing UI (navigation header, mobile dropdown menu, student login screens).
+    - Faculty members receive a dedicated direct link: `https://quizdesk-mitaoe.pages.dev/teacher/login`.
+    - Eliminates student credential spamming and confusion, enforcing clean operational abstraction between examinees and faculty.
+  - **Institutional Academic Landing Page**:
+    - Replace the immediate unauthenticated root (`/`) redirect with a clean, minimal, modern college landing page.
+    - Features official MIT Academy of Engineering branding, authoritative digital examination hero section, core architectural pillars (Institutional Identity with `@mitaoe.ac.in` email and PRN validation, Server-Synchronized Timing, and Academic Integrity Guard), and Student Examination Guidelines.
+    - Provides a prominent "Enter Student Examination Portal" call-to-action button routing to `/student/login`.
+    - Authenticated users visiting `/` continue to be intelligently routed directly to their respective dashboards (`/student/portal`, `/teacher/quizzes`, `/admin/dashboard`).
+    - Internal developer and diagnostics routes (`/status`, `/admin/overview`) remain strictly restricted to authenticated administrators.
+- **Rationale**: Strengthens role separation, improves security through obscurity against student spamming of faculty login endpoints, and presents a professional, collegiate first impression to students and evaluators.
+- **Implications**: Updated `frontend/src/components/layout/Header.tsx`, `frontend/src/pages/Home.tsx`, and `frontend/src/App.tsx`.
+

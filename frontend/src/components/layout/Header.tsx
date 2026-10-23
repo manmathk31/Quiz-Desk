@@ -100,16 +100,10 @@ export const Header: React.FC = () => {
               <div className="flex items-center space-x-3">
                 <Link
                   to="/student/login"
-                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium transition-colors shadow-sm"
+                  className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm"
                 >
                   <LogIn className="w-3.5 h-3.5" />
                   <span>Student Sign In</span>
-                </Link>
-                <Link
-                  to="/teacher/login"
-                  className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  Faculty Portal
                 </Link>
               </div>
             )}
@@ -166,21 +160,14 @@ export const Header: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col space-y-2 pt-1">
+              <div className="pt-1">
                 <Link
                   to="/student/login"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-center space-x-1.5 py-2 px-3 bg-blue-600 text-white rounded text-xs font-medium"
+                  className="flex items-center justify-center space-x-1.5 py-2 px-3 bg-blue-600 text-white rounded-lg text-xs font-semibold"
                 >
                   <LogIn className="w-3.5 h-3.5" />
                   <span>Student Sign In</span>
-                </Link>
-                <Link
-                  to="/teacher/login"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="text-center py-2 px-3 text-xs text-slate-300 hover:text-white"
-                >
-                  Faculty Sign In
                 </Link>
               </div>
             )}
