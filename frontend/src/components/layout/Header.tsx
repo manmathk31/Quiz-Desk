@@ -37,7 +37,6 @@ export const Header: React.FC = () => {
       ? [
           { label: 'Admin Dashboard', path: '/admin/dashboard' },
           { label: 'System Diagnostics', path: '/status' },
-          { label: 'Architecture Overview', path: '/admin/overview' },
         ]
       : []),
   ]

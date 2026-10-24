@@ -521,6 +521,92 @@ async def test_admin_create_teacher_validates_inputs(admin_user: User):
 
 
 # ==============================================================================
+# 6B. Student Onboarding Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_admin_create_student_success(admin_user: User, db_session: Session):
+    """Admin can enroll a new student with email, name, PRN, division, and initial password."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/students",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "email": "rohit.patil@institution.edu",
+                "name": "Rohit Patil",
+                "prn": "2026CS999",
+                "division": "A",
+                "password": "initial-secret-123",
+            },
+        )
+
+    assert res.status_code == 201
+    data = res.json()
+    assert data["email"] == "rohit.patil@institution.edu"
+    assert data["name"] == "Rohit Patil"
+    assert data["role"] == "student"
+    assert data["is_active"] is True
+
+    # Check DB user and profile entries
+    created_student = db_session.query(User).filter(User.email == "rohit.patil@institution.edu").first()
+    assert created_student is not None
+    assert created_student.role == UserRole.STUDENT
+    assert created_student.student_profile is not None
+    assert created_student.student_profile.prn == "2026CS999"
+    assert created_student.student_profile.current_division == "A"
+
+    # Check audit log
+    audit = db_session.query(AuditEvent).filter(AuditEvent.action == "admin.student_created").first()
+    assert audit is not None
+    assert audit.details["email"] == "rohit.patil@institution.edu"
+    assert audit.details["prn"] == "2026CS999"
+
+
+@pytest.mark.asyncio
+async def test_admin_create_student_rejects_duplicate_prn(admin_user: User, student_user: User):
+    """Enrolling a student with an existing PRN returns 409 Conflict."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/students",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "email": "unique.email@institution.edu",
+                "name": "Another Student",
+                "prn": student_user.student_profile.prn,
+                "password": "initial-secret-123",
+            },
+        )
+
+    assert res.status_code == 409
+    assert "already registered" in res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_admin_create_student_rejects_duplicate_email(admin_user: User, student_user: User):
+    """Enrolling a student with an existing email returns 409 Conflict."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/students",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "email": student_user.email,
+                "name": "Duplicate Email Student",
+                "prn": "BRANDNEWPRN01",
+                "password": "initial-secret-123",
+            },
+        )
+
+    assert res.status_code == 409
+    assert "already registered" in res.json()["detail"].lower()
+
+
+# ==============================================================================
 # 7. Cautious Single-User Purge Tests
 # ==============================================================================
 

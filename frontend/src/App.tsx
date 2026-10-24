@@ -105,14 +105,7 @@ export const App: React.FC = () => {
                 </RequireRole>
               }
             />
-            <Route
-              path="/admin/overview"
-              element={
-                <RequireRole allowedRoles={['admin']}>
-                  <Overview />
-                </RequireRole>
-              }
-            />
+            <Route path="/admin/overview" element={<Navigate to="/status" replace />} />
 
             {/* Student Role-Protected Routes */}
             <Route

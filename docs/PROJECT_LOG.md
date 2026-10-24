@@ -1229,5 +1229,27 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - Frontend lint (`oxlint`): 0 errors across 51 files.
    - Frontend production build (`tsc -b && vite build`): Succeeded in 741ms (0 errors).
 
+---
+
+## 17. Student Onboarding in Admin Directory & Diagnostics Navbar Consolidation (2026-10-24)
+
+### Execution Summary
+1. **Administrative Student Onboarding (`POST /api/v1/admin/students`)**:
+   - Added direct student candidate onboarding from the Admin Portal (`+ Enroll Student` in User Directory tab).
+   - Form parameters: Full Name, Institutional Email, PRN (Permanent Registration Number), Division (optional), and Initial Password.
+   - Includes secure password generation (`Generate Secure`) and one-click "Copy Credentials" card upon enrollment.
+   - Enforces unique email check on `users` and unique PRN check on `student_profiles`.
+   - Provisions Supabase Auth identity via Admin API (`POST /auth/v1/admin/users`) with `email_confirm: true` and `role: "student"`.
+   - Records `AuditEvent(action="admin.student_created")`.
+2. **Consolidation of Diagnostics & Architecture Navbar Links**:
+   - Resolved user-reported redundancy where both `System Diagnostics` (`/status`) and `Architecture Overview` (`/admin/overview`) pointed to the same underlying diagnostics component `<Overview />`.
+   - Removed the duplicate `Architecture Overview` navigation button from `Header.tsx`.
+   - Replaced duplicate route in `App.tsx` with a permanent client-side redirect: `/admin/overview` -> `/status`.
+3. **Verification**:
+   - Unit tests added: `test_admin_create_student_success`, `test_admin_create_student_rejects_duplicate_prn`, `test_admin_create_student_rejects_duplicate_email`.
+   - Admin test suite: **23 passed in 10.37s**.
+   - Frontend production build (`tsc -b && vite build`): Succeeded in **1.07s** (0 errors).
+   - Frontend lint (`oxlint`): 0 errors across 51 files.
+
 
 

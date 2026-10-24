@@ -83,6 +83,14 @@ export interface AdminTeacherCreateRequest {
   password: string
 }
 
+export interface AdminStudentCreateRequest {
+  email: string
+  name: string
+  prn: string
+  division?: string
+  password: string
+}
+
 export interface AdminUserPurgeRequest {
   target_email: string
   admin_password: string

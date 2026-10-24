@@ -7,6 +7,7 @@ import {
   fetchAdminAuditLogs,
   fetchResetStatus,
   executeDestructiveReset,
+  createAdminStudent,
   createAdminTeacher,
   purgeAdminUser,
   executeCleanTeacherWorkspace,
@@ -100,6 +101,24 @@ export const AdminDashboard: React.FC = () => {
   } | null>(null)
   const [credsCopied, setCredsCopied] = useState(false)
 
+  // Student Onboarding Modal state
+  const [showStudentModal, setShowStudentModal] = useState(false)
+  const [studentName, setStudentName] = useState('')
+  const [studentEmail, setStudentEmail] = useState('')
+  const [studentPrn, setStudentPrn] = useState('')
+  const [studentDivision, setStudentDivision] = useState('')
+  const [studentPassword, setStudentPassword] = useState('')
+  const [showStudentPass, setShowStudentPass] = useState(false)
+  const [creatingStudent, setCreatingStudent] = useState(false)
+  const [createdStudentCreds, setCreatedStudentCreds] = useState<{
+    name: string
+    email: string
+    prn: string
+    division?: string
+    password: string
+  } | null>(null)
+  const [studentCredsCopied, setStudentCredsCopied] = useState(false)
+
   // Cautious User Purge state
   const [purgeTargetEmail, setPurgeTargetEmail] = useState('')
   const [purgeAdminPassword, setPurgeAdminPassword] = useState('')
@@ -114,7 +133,7 @@ export const AdminDashboard: React.FC = () => {
   const [cleaningWorkspace, setCleaningWorkspace] = useState(false)
   const [cleanWorkspaceResult, setCleanWorkspaceResult] = useState<AdminCleanWorkspaceResponse | null>(null)
 
-  // Helper: Generate Secure Password
+  // Helper: Generate Secure Password for Teacher
   const generateRandomPassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*'
     let pwd = 'Quiz@'
@@ -122,6 +141,69 @@ export const AdminDashboard: React.FC = () => {
       pwd += chars.charAt(Math.floor(Math.random() * chars.length))
     }
     setTeacherPassword(pwd)
+  }
+
+  // Helper: Generate Secure Password for Student
+  const generateRandomStudentPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*'
+    let pwd = 'Student@'
+    for (let i = 0; i < 8; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    setStudentPassword(pwd)
+  }
+
+  const copyStudentCredentials = () => {
+    if (!createdStudentCreds) return
+    const text = `Quizdesk Student Account Created
+Name: ${createdStudentCreds.name}
+Email: ${createdStudentCreds.email}
+PRN: ${createdStudentCreds.prn}${createdStudentCreds.division ? `\nDivision: ${createdStudentCreds.division}` : ''}
+Initial Password: ${createdStudentCreds.password}
+Student Portal: ${window.location.origin}/student/login`
+    navigator.clipboard.writeText(text)
+    setStudentCredsCopied(true)
+    setTimeout(() => setStudentCredsCopied(false), 2500)
+  }
+
+  // Handle Student Onboarding
+  const handleCreateStudent = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!studentEmail.trim() || !studentName.trim() || !studentPrn.trim() || !studentPassword.trim()) {
+      setErrorMsg('Name, institutional email, PRN, and initial password are required to enroll a student.')
+      return
+    }
+
+    try {
+      setCreatingStudent(true)
+      setErrorMsg(null)
+      await createAdminStudent(token, {
+        name: studentName.trim(),
+        email: studentEmail.trim(),
+        prn: studentPrn.trim().toUpperCase(),
+        division: studentDivision.trim().toUpperCase() || undefined,
+        password: studentPassword.trim(),
+      })
+      setCreatedStudentCreds({
+        name: studentName.trim(),
+        email: studentEmail.trim(),
+        prn: studentPrn.trim().toUpperCase(),
+        division: studentDivision.trim().toUpperCase() || undefined,
+        password: studentPassword.trim(),
+      })
+      setSuccessMsg(`Student ${studentName} (PRN: ${studentPrn.trim().toUpperCase()}) enrolled successfully!`)
+      setStudentName('')
+      setStudentEmail('')
+      setStudentPrn('')
+      setStudentDivision('')
+      setStudentPassword('')
+      loadUsers()
+      loadOverview()
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to enroll student.')
+    } finally {
+      setCreatingStudent(false)
+    }
   }
 
 
@@ -671,6 +753,18 @@ export const AdminDashboard: React.FC = () => {
                 title="Refresh user directory"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatedStudentCreds(null)
+                  setShowStudentModal(true)
+                }}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm transition-colors whitespace-nowrap"
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                <span>+ Enroll Student</span>
               </button>
 
               <button
@@ -1533,6 +1627,211 @@ export const AdminDashboard: React.FC = () => {
                   >
                     <UserPlus className="w-3.5 h-3.5" />
                     <span>{creatingTeacher ? 'Provisioning Account...' : 'Provision Faculty Account'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: ONBOARD / ENROLL STUDENT */}
+      {showStudentModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Enroll Student</h3>
+                  <p className="text-[11px] text-slate-500">Provision authorized student candidate account</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowStudentModal(false)
+                  setCreatedStudentCreds(null)
+                }}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {createdStudentCreds ? (
+              <div className="space-y-4 pt-1">
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-xs">
+                  <div className="flex items-center space-x-2 text-emerald-800 font-semibold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>Student Account Enrolled!</span>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed">
+                    This student account is active and can sign in directly to the Student Portal.
+                  </p>
+                  <div className="mt-3 p-3 bg-white border border-emerald-200 rounded-lg font-mono text-[11px] space-y-1.5 text-slate-800">
+                    <div>
+                      <span className="text-slate-400">Name:</span> {createdStudentCreds.name}
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Email:</span> {createdStudentCreds.email}
+                    </div>
+                    <div>
+                      <span className="text-slate-400">PRN:</span> {createdStudentCreds.prn}
+                    </div>
+                    {createdStudentCreds.division && (
+                      <div>
+                        <span className="text-slate-400">Division:</span> {createdStudentCreds.division}
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-slate-400">Initial Password:</span> {createdStudentCreds.password}
+                    </div>
+                    <div className="text-[10px] text-blue-600 pt-1">
+                      Portal: {window.location.origin}/student/login
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={copyStudentCredentials}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+                  >
+                    {studentCredsCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{studentCredsCopied ? 'Copied to Clipboard!' : 'Copy Credentials'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStudentModal(false)
+                      setCreatedStudentCreds(null)
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateStudent} className="space-y-3.5 pt-1">
+                <div>
+                  <label htmlFor="student-name" className="block text-xs font-semibold text-slate-700 mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    id="student-name"
+                    type="text"
+                    required
+                    placeholder="e.g. Aditya Sharma"
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="student-email" className="block text-xs font-semibold text-slate-700 mb-1">
+                    Institutional Email Address
+                  </label>
+                  <input
+                    id="student-email"
+                    type="email"
+                    required
+                    placeholder="e.g. aditya.sharma@mitaoe.ac.in"
+                    value={studentEmail}
+                    onChange={(e) => setStudentEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="student-prn" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Student PRN
+                    </label>
+                    <input
+                      id="student-prn"
+                      type="text"
+                      required
+                      placeholder="e.g. 202401110042"
+                      value={studentPrn}
+                      onChange={(e) => setStudentPrn(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="student-division" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Division <span className="font-normal text-slate-400">(Optional)</span>
+                    </label>
+                    <input
+                      id="student-division"
+                      type="text"
+                      placeholder="e.g. A or B"
+                      value={studentDivision}
+                      onChange={(e) => setStudentDivision(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="student-password" className="text-xs font-semibold text-slate-700">
+                      Initial Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={generateRandomStudentPassword}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Generate Secure</span>
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="student-password"
+                      type={showStudentPass ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      placeholder="Minimum 6 characters"
+                      value={studentPassword}
+                      onChange={(e) => setStudentPassword(e.target.value)}
+                      className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowStudentPass(!showStudentPass)}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showStudentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    The student can sign in immediately at the Student Portal using these credentials.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={creatingStudent}
+                    onClick={() => setShowStudentModal(false)}
+                    className="px-3.5 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingStudent}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold transition-colors flex items-center space-x-1.5 shadow-sm"
+                  >
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    <span>{creatingStudent ? 'Enrolling Student...' : 'Enroll Student'}</span>
                   </button>
                 </div>
               </form>

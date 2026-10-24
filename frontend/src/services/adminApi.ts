@@ -7,6 +7,7 @@ import type {
   AdminDestructiveResetResponse,
   AdminOverviewResponse,
   AdminResetStatusResponse,
+  AdminStudentCreateRequest,
   AdminTeacherCreateRequest,
   AdminUserListItem,
   AdminUserListResponse,
@@ -142,6 +143,18 @@ export async function createAdminTeacher(
     body: JSON.stringify(payload),
   })
   return handleResponse<UserProfile>(response, 'Failed to create faculty account')
+}
+
+export async function createAdminStudent(
+  token: string,
+  payload: AdminStudentCreateRequest
+): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/students`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  })
+  return handleResponse<UserProfile>(response, 'Failed to enroll student account')
 }
 
 export async function purgeAdminUser(

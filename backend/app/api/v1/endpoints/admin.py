@@ -18,6 +18,7 @@ from app.schemas.admin import (
     AdminDestructiveResetResponse,
     AdminOverviewResponse,
     AdminResetStatusResponse,
+    AdminStudentCreateRequest,
     AdminTeacherCreateRequest,
     AdminUserListResponse,
     AdminUserPurgeRequest,
@@ -203,6 +204,25 @@ async def create_teacher(
     db: Session = Depends(get_db),
 ) -> User:
     return admin_service.create_teacher_user(
+        db=db,
+        admin_user=current_admin,
+        req=body,
+    )
+
+
+@router.post(
+    "/students",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Onboard/enroll new student",
+    description="Directly provision a new Student with institutional email, full name, PRN, division, and initial password.",
+)
+async def create_student(
+    body: AdminStudentCreateRequest,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> User:
+    return admin_service.create_student_user(
         db=db,
         admin_user=current_admin,
         req=body,

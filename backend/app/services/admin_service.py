@@ -24,6 +24,7 @@ from app.schemas.admin import (
     AdminCleanWorkspaceRequest,
     AdminOverviewResponse,
     AdminOverviewStats,
+    AdminStudentCreateRequest,
     AdminTeacherCreateRequest,
     AdminUserListItem,
     AdminUserListResponse,
@@ -431,9 +432,9 @@ def bootstrap_admin_user(
     return user
 
 
-def _sync_supabase_teacher_auth(email: str, password: str, name: str) -> Optional[uuid.UUID]:
+def _sync_supabase_user_auth(email: str, password: str, name: str, role: str = "teacher") -> Optional[uuid.UUID]:
     """
-    Provision a teacher account in Supabase Auth via Admin REST API.
+    Provision or update an account in Supabase Auth via Admin REST API.
     Enforces email_confirm=True and sets user_metadata.
     """
     if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
@@ -452,7 +453,7 @@ def _sync_supabase_teacher_auth(email: str, password: str, name: str) -> Optiona
         "email_confirm": True,
         "user_metadata": {
             "name": name,
-            "role": "teacher",
+            "role": role,
         },
     }
 
@@ -484,14 +485,22 @@ def _sync_supabase_teacher_auth(email: str, password: str, name: str) -> Optiona
                                 headers=headers,
                                 json={
                                     "password": password,
-                                    "user_metadata": {"name": name, "role": "teacher"},
+                                    "user_metadata": {"name": name, "role": role},
                                 },
                             )
                             return existing_id
     except Exception as exc:
-        logger.warning(f"Failed to communicate with Supabase Admin API for teacher sync: {exc}")
+        logger.warning(f"Failed to communicate with Supabase Admin API for {role} sync: {exc}")
 
     return None
+
+
+def _sync_supabase_teacher_auth(email: str, password: str, name: str) -> Optional[uuid.UUID]:
+    return _sync_supabase_user_auth(email, password, name, role="teacher")
+
+
+def _sync_supabase_student_auth(email: str, password: str, name: str) -> Optional[uuid.UUID]:
+    return _sync_supabase_user_auth(email, password, name, role="student")
 
 
 def _delete_supabase_auth_user(user_id: uuid.UUID) -> bool:
@@ -624,6 +633,101 @@ def create_teacher_user(
     db.refresh(new_teacher)
 
     return new_teacher
+
+
+def create_student_user(
+    db: Session,
+    admin_user: User,
+    req: AdminStudentCreateRequest,
+) -> User:
+    """
+    Directly enroll/onboard a student member with institutional email, PRN, and initial password.
+    Creates or synchronizes their account in Supabase Auth (confirmed), registers them
+    as UserRole.STUDENT, and creates their StudentProfile in the PostgreSQL database.
+    """
+    norm_email = req.email.strip().lower()
+    norm_name = req.name.strip()
+    norm_prn = req.prn.strip().upper()
+    norm_division = req.division.strip().upper() if req.division and req.division.strip() else None
+
+    if not norm_email or "@" not in norm_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid institutional email address is required.",
+        )
+    if len(norm_name) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Student name must be at least 2 characters.",
+        )
+    if len(norm_prn) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Student PRN must be at least 3 characters.",
+        )
+    if len(req.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Initial password must be at least 6 characters.",
+        )
+
+    # Check for existing email in database
+    existing_user = db.query(User).filter(User.email == norm_email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User with email '{norm_email}' is already registered as a {existing_user.role}.",
+        )
+
+    # Check for existing PRN in database
+    existing_profile = db.query(StudentProfile).filter(StudentProfile.prn == norm_prn).first()
+    if existing_profile:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Student with PRN '{norm_prn}' is already registered in the system.",
+        )
+
+    # Synchronize with Supabase Auth
+    user_uuid = _sync_supabase_student_auth(norm_email, req.password, norm_name)
+    if not user_uuid:
+        user_uuid = uuid.uuid4()
+
+    new_student = User(
+        id=user_uuid,
+        email=norm_email,
+        name=norm_name,
+        role=UserRole.STUDENT,
+        is_active=True,
+    )
+    db.add(new_student)
+    db.flush()
+
+    student_profile = StudentProfile(
+        user_id=new_student.id,
+        prn=norm_prn,
+        current_division=norm_division,
+    )
+    db.add(student_profile)
+
+    audit = AuditEvent(
+        user_id=admin_user.id,
+        action="admin.student_created",
+        entity_type="user",
+        entity_id=str(new_student.id),
+        details={
+            "email": norm_email,
+            "name": norm_name,
+            "prn": norm_prn,
+            "division": norm_division,
+            "role": "student",
+            "created_by": admin_user.email,
+        },
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(new_student)
+
+    return new_student
 
 
 def purge_single_user(

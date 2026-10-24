@@ -116,6 +116,15 @@ class AdminTeacherCreateRequest(BaseModel):
     password: str = Field(..., min_length=6, description="Initial temporary or default password")
 
 
+class AdminStudentCreateRequest(BaseModel):
+    """Payload for onboarding/enrolling a student member."""
+    email: str = Field(..., description="Institutional email of the student")
+    name: str = Field(..., min_length=2, description="Full name of the student")
+    prn: str = Field(..., min_length=3, description="Permanent Registration Number (PRN)")
+    division: Optional[str] = Field(None, description="Class division / section (e.g. A, B, C)")
+    password: str = Field(..., min_length=6, description="Initial temporary or default password")
+
+
 class AdminUserPurgeRequest(BaseModel):
     """Guarded payload for cautiously purging a single user and all dependent records."""
     target_email: str = Field(..., description="Email address of the user to purge")
