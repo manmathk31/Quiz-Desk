@@ -107,3 +107,45 @@ class AdminDestructiveResetResponse(BaseModel):
     message: str
     cleared_records: Dict[str, int]
     executed_at: datetime
+
+
+class AdminTeacherCreateRequest(BaseModel):
+    """Payload for onboarding a faculty/teacher member."""
+    email: str = Field(..., description="Institutional email of the faculty member")
+    name: str = Field(..., min_length=2, description="Full name of the faculty member")
+    password: str = Field(..., min_length=6, description="Initial temporary or default password")
+
+
+class AdminUserPurgeRequest(BaseModel):
+    """Guarded payload for cautiously purging a single user and all dependent records."""
+    target_email: str = Field(..., description="Email address of the user to purge")
+    admin_password: str = Field(..., description="Administrative security password or authorization token")
+
+
+class AdminUserPurgeResponse(BaseModel):
+    """Outcome of single user purge operation."""
+    success: bool
+    message: str
+    purged_user_id: str
+    purged_email: str
+    cleared_records: Dict[str, int]
+    executed_at: datetime
+
+
+class AdminCleanWorkspaceRequest(BaseModel):
+    """Guarded reset payload for rehearsal reset (deletes all students & attempts, keeping teachers & admins)."""
+    confirmation_code: str = Field(
+        ...,
+        description="Explicit confirmation token; must strictly match 'CONFIRM_CLEAN_TEACHER_WORKSPACE'",
+    )
+
+
+class AdminCleanWorkspaceResponse(BaseModel):
+    """Result of executing clean teacher workspace rehearsal reset."""
+    success: bool
+    message: str
+    cleared_records: Dict[str, int]
+    purged_students_count: int
+    preserved_teachers_count: int
+    executed_at: datetime
+

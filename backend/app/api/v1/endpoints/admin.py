@@ -12,14 +12,20 @@ from app.models.user import User, UserRole
 from app.schemas.admin import (
     AdminAuditLogResponse,
     AdminBootstrapRequest,
+    AdminCleanWorkspaceRequest,
+    AdminCleanWorkspaceResponse,
     AdminDestructiveResetRequest,
     AdminDestructiveResetResponse,
     AdminOverviewResponse,
     AdminResetStatusResponse,
+    AdminTeacherCreateRequest,
     AdminUserListResponse,
+    AdminUserPurgeRequest,
+    AdminUserPurgeResponse,
     AdminUserStatusUpdateRequest,
 )
 from app.schemas.user import UserResponse
+
 from app.services import admin_service
 
 router = APIRouter(prefix="/admin", tags=["Admin Portal"])
@@ -182,3 +188,59 @@ async def reset_test_data(
         admin_user=current_admin,
         confirmation_code=body.confirmation_code,
     )
+
+
+@router.post(
+    "/teachers",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Onboard new faculty member",
+    description="Directly provision a new Teacher/Faculty member with institutional email, full name, and initial password.",
+)
+async def create_teacher(
+    body: AdminTeacherCreateRequest,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> User:
+    return admin_service.create_teacher_user(
+        db=db,
+        admin_user=current_admin,
+        req=body,
+    )
+
+
+@router.post(
+    "/users/purge",
+    response_model=AdminUserPurgeResponse,
+    summary="Cautiously purge single user account",
+    description="Permanently delete a user, their profile, roster associations, attempts, and Supabase auth account with mandatory admin password.",
+)
+async def purge_user(
+    body: AdminUserPurgeRequest,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    return admin_service.purge_single_user(
+        db=db,
+        admin_user=current_admin,
+        req=body,
+    )
+
+
+@router.post(
+    "/clean-teacher-workspace",
+    response_model=AdminCleanWorkspaceResponse,
+    summary="Execute clean teacher workspace rehearsal reset",
+    description="Wipes all student accounts, attempts, telemetry, and test quizzes for clean rehearsal, strictly preserving teacher and admin accounts.",
+)
+async def clean_teacher_workspace(
+    body: AdminCleanWorkspaceRequest,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    return admin_service.execute_clean_teacher_workspace(
+        db=db,
+        admin_user=current_admin,
+        confirmation_code=body.confirmation_code,
+    )
+

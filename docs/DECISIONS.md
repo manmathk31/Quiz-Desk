@@ -505,3 +505,26 @@ This document tracks all formal architectural and product decisions for **Quizde
 - **Rationale**: Strengthens role separation, improves security through obscurity against student spamming of faculty login endpoints, and presents a professional, collegiate first impression to students and evaluators.
 - **Implications**: Updated `frontend/src/components/layout/Header.tsx`, `frontend/src/pages/Home.tsx`, and `frontend/src/App.tsx`.
 
+---
+
+### DEC-025: Faculty Onboarding, Cautious User Purge, and Clean Teacher Workspace Rehearsal Reset
+- **Status**: `Confirmed`
+- **Date**: 2026-10-24
+- **Decision**:
+  - **Faculty Direct Onboarding**:
+    - Administrators can directly provision new Faculty / Teacher accounts via `POST /api/v1/admin/teachers`.
+    - Creates or updates Supabase Auth identity via Admin API (`POST /auth/v1/admin/users`) with `email_confirm: true`, and registers them as `UserRole.TEACHER` in PostgreSQL.
+    - Teachers can sign in immediately with the administrator-provided initial password, or reset/change it anytime via the Faculty Portal.
+  - **Cautious Single-User Purge**:
+    - Dedicated guarded endpoint `POST /api/v1/admin/users/purge` and dedicated administrative UI tab.
+    - Requires target email, email re-confirmation, and administrative authorization password.
+    - Cascades all attempts, answers, telemetry events, grade adjustments, and student profiles, sets `AuditEvent.user_id = None` to preserve audit logs, and deletes the Supabase Auth user record so re-enrollment works cleanly without collision.
+    - Prevents administrators from deleting themselves or other administrator accounts.
+  - **Clean Teacher Workspace (Rehearsal Reset)**:
+    - Dedicated testing utility `POST /api/v1/admin/clean-teacher-workspace` guarded by `CONFIRM_CLEAN_TEACHER_WORKSPACE`.
+    - Wipes all student candidate accounts (`role == UserRole.STUDENT`) from PostgreSQL and Supabase Auth, along with all student profiles, roster assignments, attempts, answers, telemetry, and test quizzes.
+    - Strictly preserves all Teacher/Faculty accounts and Administrator accounts so educators can repeatedly rehearse exams with a clean candidate slate.
+- **Rationale**: Empowers institution administrators to manage faculty access, swiftly fix candidate roster enrollment errors by purging corrupted records, and provide educators a clean testing workspace without losing their teacher accounts.
+- **Implications**: Added `backend/app/schemas/admin.py`, endpoints in `backend/app/api/v1/endpoints/admin.py`, business logic in `backend/app/services/admin_service.py`, 8 automated tests in `backend/tests/test_admin_portal.py`, and updated frontend admin UI in `frontend/src/pages/admin/AdminDashboard.tsx`.
+
+

@@ -442,3 +442,274 @@ async def test_reset_success_in_development(admin_user: User, teacher_user: User
     reset_audit = db_session.query(AuditEvent).filter(AuditEvent.action == "system.destructive_reset").first()
     assert reset_audit is not None
     assert reset_audit.user_id == admin_user.id
+
+
+# ==============================================================================
+# 6. Faculty Onboarding Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_admin_create_teacher_success(admin_user: User, db_session: Session):
+    """Admin can onboard a new faculty member with email, name, and initial password."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/teachers",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "email": "dr.kulkarni@institution.edu",
+                "name": "Dr. Ramesh Kulkarni",
+                "password": "initial-secret-123",
+            },
+        )
+
+    assert res.status_code == 201
+    data = res.json()
+    assert data["email"] == "dr.kulkarni@institution.edu"
+    assert data["name"] == "Dr. Ramesh Kulkarni"
+    assert data["role"] == "teacher"
+    assert data["is_active"] is True
+
+    # Check DB entry
+    created_teacher = db_session.query(User).filter(User.email == "dr.kulkarni@institution.edu").first()
+    assert created_teacher is not None
+    assert created_teacher.role == UserRole.TEACHER
+
+    # Check audit log
+    audit = db_session.query(AuditEvent).filter(AuditEvent.action == "admin.teacher_created").first()
+    assert audit is not None
+    assert audit.details["email"] == "dr.kulkarni@institution.edu"
+
+
+@pytest.mark.asyncio
+async def test_admin_create_teacher_rejects_duplicate_email(admin_user: User, teacher_user: User):
+    """Creating a teacher with an email that is already registered returns 409 Conflict."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/teachers",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "email": teacher_user.email,
+                "name": "Prof. Impostor",
+                "password": "initial-secret-123",
+            },
+        )
+
+    assert res.status_code == 409
+    assert "already registered" in res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_admin_create_teacher_validates_inputs(admin_user: User):
+    """Short passwords or invalid emails are rejected with 400 Bad Request."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res_short = await client.post(
+            "/api/v1/admin/teachers",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "email": "teacher.short@institution.edu",
+                "name": "Short Pass Teacher",
+                "password": "123",  # < 6 chars
+            },
+        )
+        assert res_short.status_code in (400, 422)
+
+
+# ==============================================================================
+# 7. Cautious Single-User Purge Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_admin_purge_single_user_success(admin_user: User, student_user: User, db_session: Session):
+    """Admin can permanently purge a user account, student profile, attempts, and assignments."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+    now = datetime.now(timezone.utc)
+
+    # Seed an assignment and an attempt for this student
+    quiz = Quiz(
+        id=uuid.uuid4(),
+        title="Physics Quiz",
+        course_code="PH101",
+        created_by_id=admin_user.id,
+        status=QuizStatus.DRAFT,
+    )
+    db_session.add(quiz)
+    db_session.flush()
+
+    from datetime import timedelta
+    version = QuizVersion(
+        id=uuid.uuid4(),
+        quiz_id=quiz.id,
+        title="Physics Quiz",
+        version_number=1,
+        opens_at=now,
+        closes_at=now + timedelta(hours=2),
+        duration_minutes=60,
+    )
+    db_session.add(version)
+    db_session.flush()
+
+    attempt = QuizAttempt(
+        id=uuid.uuid4(),
+        quiz_version_id=version.id,
+        student_id=student_user.id,
+        attempt_number=1,
+        status=AttemptStatus.SUBMITTED,
+        started_at=now,
+        deadline_at=now + timedelta(hours=1),
+    )
+    db_session.add(attempt)
+
+    assignment = QuizAssignment(
+        id=uuid.uuid4(),
+        quiz_id=quiz.id,
+        student_prn=student_user.student_profile.prn,
+        student_email=student_user.email,
+        student_name=student_user.name,
+        division="A",
+        assigned_student_id=student_user.id,
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    saved_student_id = student_user.id
+    saved_student_email = student_user.email
+    saved_profile_id = student_user.student_profile.id
+    saved_attempt_id = attempt.id
+    saved_assignment_id = assignment.id
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/users/purge",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "target_email": saved_student_email,
+                "admin_password": "test-bootstrap-secret-token",  # matches ADMIN_BOOTSTRAP_TOKEN
+            },
+        )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["purged_email"] == saved_student_email
+
+    # Verify student is removed from database
+    db_session.expire_all()
+    assert db_session.query(User).filter(User.id == saved_student_id).first() is None
+    assert db_session.query(StudentProfile).filter(StudentProfile.id == saved_profile_id).first() is None
+    assert db_session.query(QuizAttempt).filter(QuizAttempt.id == saved_attempt_id).first() is None
+    assert db_session.query(QuizAssignment).filter(QuizAssignment.id == saved_assignment_id).first() is None
+
+    # Verify audit event was created
+    audit = db_session.query(AuditEvent).filter(AuditEvent.action == "admin.user_purged").first()
+    assert audit is not None
+    assert audit.details["purged_email"] == saved_student_email
+
+
+
+@pytest.mark.asyncio
+async def test_admin_purge_rejects_invalid_admin_password(admin_user: User, student_user: User):
+    """Purge request with incorrect admin password returns 403 Forbidden."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/users/purge",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "target_email": student_user.email,
+                "admin_password": "completely-wrong-password",
+            },
+        )
+
+    assert res.status_code == 403
+    assert "security password" in res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_admin_purge_prevents_deleting_self_and_admins(admin_user: User):
+    """Admin cannot delete their own account or another administrator account."""
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/users/purge",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "target_email": admin_user.email,
+                "admin_password": "test-bootstrap-secret-token",
+            },
+        )
+
+    assert res.status_code == 400
+    assert "cannot delete" in res.json()["detail"].lower()
+
+
+# ==============================================================================
+# 8. Clean Teacher Workspace Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_clean_teacher_workspace_success(
+    admin_user: User, teacher_user: User, student_user: User, db_session: Session, monkeypatch
+):
+    """
+    Clean teacher workspace resets all student accounts, profiles, attempts,
+    and test quizzes, while strictly preserving teacher and admin accounts.
+    """
+    monkeypatch.setattr(settings, "ALLOW_DESTRUCTIVE_RESET", True)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+    saved_student_id = student_user.id
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/clean-teacher-workspace",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"confirmation_code": "CONFIRM_CLEAN_TEACHER_WORKSPACE"},
+        )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["purged_students_count"] == 1
+    assert data["preserved_teachers_count"] == 1
+
+    # Verify student was deleted
+    db_session.expire_all()
+    assert db_session.query(User).filter(User.id == saved_student_id).first() is None
+
+    # Verify teacher and admin accounts remain intact
+    assert db_session.get(User, teacher_user.id) is not None
+    assert db_session.get(User, admin_user.id) is not None
+
+
+    # Verify audit event
+    audit = db_session.query(AuditEvent).filter(AuditEvent.action == "system.clean_teacher_workspace").first()
+    assert audit is not None
+
+
+@pytest.mark.asyncio
+async def test_clean_teacher_workspace_rejects_wrong_code(admin_user: User, monkeypatch):
+    """Clean teacher workspace requires exact confirmation code."""
+    monkeypatch.setattr(settings, "ALLOW_DESTRUCTIVE_RESET", True)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+
+    token = make_test_token(sub=str(admin_user.id), email=admin_user.email)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/admin/clean-teacher-workspace",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"confirmation_code": "WRONG_CONFIRMATION"},
+        )
+
+    assert res.status_code == 400
+    assert "invalid confirmation code" in res.json()["detail"].lower()
+

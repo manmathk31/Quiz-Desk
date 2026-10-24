@@ -7,6 +7,9 @@ import {
   fetchAdminAuditLogs,
   fetchResetStatus,
   executeDestructiveReset,
+  createAdminTeacher,
+  purgeAdminUser,
+  executeCleanTeacherWorkspace,
 } from '../../services/adminApi'
 import type {
   AdminOverviewResponse,
@@ -14,6 +17,8 @@ import type {
   AdminAuditLogItem,
   AdminResetStatusResponse,
   AdminDestructiveResetResponse,
+  AdminUserPurgeResponse,
+  AdminCleanWorkspaceResponse,
 } from '../../types/admin'
 import {
   Shield,
@@ -33,9 +38,20 @@ import {
   ChevronRight,
   Database,
   Info,
+  UserPlus,
+  UserX,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+
+  Sparkles,
+  AlertOctagon,
+  RotateCcw,
 } from 'lucide-react'
 
-type DashboardTab = 'overview' | 'users' | 'audit' | 'reset'
+type DashboardTab = 'overview' | 'users' | 'purge' | 'audit' | 'reset'
+
 
 export const AdminDashboard: React.FC = () => {
   const { session, user: authUser } = useAuth()
@@ -69,6 +85,45 @@ export const AdminDashboard: React.FC = () => {
   const [resetConfirmInput, setResetConfirmInput] = useState('')
   const [resetting, setResetting] = useState(false)
   const [resetResult, setResetResult] = useState<AdminDestructiveResetResponse | null>(null)
+
+  // Faculty Onboarding Modal state
+  const [showTeacherModal, setShowTeacherModal] = useState(false)
+  const [teacherName, setTeacherName] = useState('')
+  const [teacherEmail, setTeacherEmail] = useState('')
+  const [teacherPassword, setTeacherPassword] = useState('')
+  const [showTeacherPass, setShowTeacherPass] = useState(false)
+  const [creatingTeacher, setCreatingTeacher] = useState(false)
+  const [createdTeacherCreds, setCreatedTeacherCreds] = useState<{
+    name: string
+    email: string
+    password: string
+  } | null>(null)
+  const [credsCopied, setCredsCopied] = useState(false)
+
+  // Cautious User Purge state
+  const [purgeTargetEmail, setPurgeTargetEmail] = useState('')
+  const [purgeAdminPassword, setPurgeAdminPassword] = useState('')
+  const [purgeConfirmEmail, setPurgeConfirmEmail] = useState('')
+  const [showPurgePass, setShowPurgePass] = useState(false)
+  const [purgingUser, setPurgingUser] = useState(false)
+  const [purgeResult, setPurgeResult] = useState<AdminUserPurgeResponse | null>(null)
+
+  // Clean Teacher Workspace state
+  const [showCleanWorkspaceModal, setShowCleanWorkspaceModal] = useState(false)
+  const [cleanWorkspaceConfirmInput, setCleanWorkspaceConfirmInput] = useState('')
+  const [cleaningWorkspace, setCleaningWorkspace] = useState(false)
+  const [cleanWorkspaceResult, setCleanWorkspaceResult] = useState<AdminCleanWorkspaceResponse | null>(null)
+
+  // Helper: Generate Secure Password
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*'
+    let pwd = 'Quiz@'
+    for (let i = 0; i < 8; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    setTeacherPassword(pwd)
+  }
+
 
   // 1. Load Overview Data
   const loadOverview = useCallback(async () => {
@@ -196,6 +251,122 @@ export const AdminDashboard: React.FC = () => {
     }
   }
 
+  // Handle Faculty Onboarding
+  const handleCreateTeacher = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!teacherEmail.trim() || !teacherName.trim() || !teacherPassword.trim()) {
+      setErrorMsg('All fields are required to onboard a faculty member.')
+      return
+    }
+
+    try {
+      setCreatingTeacher(true)
+      setErrorMsg(null)
+      await createAdminTeacher(token, {
+        email: teacherEmail.trim(),
+        name: teacherName.trim(),
+        password: teacherPassword.trim(),
+      })
+      setCreatedTeacherCreds({
+        name: teacherName.trim(),
+        email: teacherEmail.trim(),
+        password: teacherPassword.trim(),
+      })
+      setSuccessMsg(`Faculty member ${teacherName} (${teacherEmail}) provisioned successfully!`)
+      setTeacherName('')
+      setTeacherEmail('')
+      setTeacherPassword('')
+      loadUsers()
+      loadOverview()
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to provision faculty member.')
+    } finally {
+      setCreatingTeacher(false)
+    }
+  }
+
+  // Handle Cautious Single-User Purge
+  const handlePurgeUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const target = purgeTargetEmail.trim().toLowerCase()
+    const confirm = purgeConfirmEmail.trim().toLowerCase()
+
+    if (!target || !confirm || !purgeAdminPassword.trim()) {
+      setErrorMsg('Target email, confirmation email, and security password are required.')
+      return
+    }
+
+    if (target !== confirm) {
+      setErrorMsg('Confirmation email does not match the target email.')
+      return
+    }
+
+    if (authUser?.email && target === authUser.email.toLowerCase()) {
+      setErrorMsg('Administrators cannot delete their own account.')
+      return
+    }
+
+
+    if (!window.confirm(`PERMANENT DELETION WARNING: Are you absolutely sure you want to permanently delete user ${target} and all their attempts, answers, and telemetry? This cannot be undone.`)) {
+      return
+    }
+
+    try {
+      setPurgingUser(true)
+      setErrorMsg(null)
+      const res = await purgeAdminUser(token, {
+        target_email: target,
+        admin_password: purgeAdminPassword.trim(),
+      })
+      setPurgeResult(res)
+      setSuccessMsg(`User ${target} and all dependent records were permanently deleted.`)
+      setPurgeTargetEmail('')
+      setPurgeConfirmEmail('')
+      setPurgeAdminPassword('')
+      loadUsers()
+      loadOverview()
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to purge user.')
+    } finally {
+      setPurgingUser(false)
+    }
+  }
+
+  // Handle Clean Teacher Workspace Execution
+  const handleExecuteCleanWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (cleanWorkspaceConfirmInput !== 'CONFIRM_CLEAN_TEACHER_WORKSPACE') {
+      setErrorMsg("Confirmation code must be strictly 'CONFIRM_CLEAN_TEACHER_WORKSPACE'.")
+      return
+    }
+
+    try {
+      setCleaningWorkspace(true)
+      setErrorMsg(null)
+      const res = await executeCleanTeacherWorkspace(token, cleanWorkspaceConfirmInput)
+      setCleanWorkspaceResult(res)
+      setShowCleanWorkspaceModal(false)
+      setCleanWorkspaceConfirmInput('')
+      setSuccessMsg('Teacher workspace cleaned successfully! All students and attempts removed. Faculty & Admin preserved.')
+      loadResetStatus()
+      loadUsers()
+      loadOverview()
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Clean teacher workspace execution failed.')
+    } finally {
+      setCleaningWorkspace(false)
+    }
+  }
+
+  const copyTeacherCredentials = () => {
+    if (!createdTeacherCreds) return
+    const text = `Quizdesk Faculty Portal Access\nName: ${createdTeacherCreds.name}\nEmail: ${createdTeacherCreds.email}\nInitial Password: ${createdTeacherCreds.password}\nPortal Link: ${window.location.origin}/teacher/login`
+    navigator.clipboard.writeText(text)
+    setCredsCopied(true)
+    setTimeout(() => setCredsCopied(false), 3000)
+  }
+
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -286,6 +457,19 @@ export const AdminDashboard: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setActiveTab('purge')}
+          className={`pb-3 px-1 border-b-2 transition-colors flex items-center space-x-2 ${
+            activeTab === 'purge'
+              ? 'border-rose-600 text-rose-700 font-semibold'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <UserX className="w-4 h-4 text-rose-500" />
+          <span>Cautious Delete User</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('audit')}
           className={`pb-3 px-1 border-b-2 transition-colors flex items-center space-x-2 ${
             activeTab === 'audit'
@@ -306,10 +490,11 @@ export const AdminDashboard: React.FC = () => {
               : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
-          <Trash2 className="w-4 h-4 text-rose-500" />
-          <span>Guarded Reset</span>
+          <RotateCcw className="w-4 h-4 text-rose-500" />
+          <span>Guarded Reset & Workspace</span>
         </button>
       </div>
+
 
       {/* TAB 1: OVERVIEW & METRICS */}
       {activeTab === 'overview' && (
@@ -487,6 +672,18 @@ export const AdminDashboard: React.FC = () => {
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatedTeacherCreds(null)
+                  setShowTeacherModal(true)
+                }}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm transition-colors whitespace-nowrap"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>+ Onboard Faculty</span>
+              </button>
             </div>
           </div>
 
@@ -562,28 +759,44 @@ export const AdminDashboard: React.FC = () => {
                                 Current Admin
                               </span>
                             ) : (
-                              <button
-                                type="button"
-                                disabled={updatingUserId === u.id}
-                                onClick={() => handleToggleUserStatus(u)}
-                                className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
-                                  u.is_active
-                                    ? 'text-rose-600 hover:bg-rose-50 border border-rose-200'
-                                    : 'text-emerald-700 hover:bg-emerald-50 border border-emerald-300'
-                                }`}
-                              >
-                                {updatingUserId === u.id
-                                  ? 'Updating...'
-                                  : u.is_active
-                                  ? 'Deactivate'
-                                  : 'Activate'}
-                              </button>
+                              <div className="flex items-center justify-end space-x-2">
+                                <button
+                                  type="button"
+                                  disabled={updatingUserId === u.id}
+                                  onClick={() => handleToggleUserStatus(u)}
+                                  className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
+                                    u.is_active
+                                      ? 'text-slate-600 hover:bg-slate-100 border border-slate-200'
+                                      : 'text-emerald-700 hover:bg-emerald-50 border border-emerald-300'
+                                  }`}
+                                >
+                                  {updatingUserId === u.id
+                                    ? 'Updating...'
+                                    : u.is_active
+                                    ? 'Deactivate'
+                                    : 'Activate'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPurgeTargetEmail(u.email)
+                                    setPurgeConfirmEmail(u.email)
+                                    setActiveTab('purge')
+                                  }}
+                                  className="px-2.5 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 border border-rose-200 rounded transition-colors flex items-center space-x-1"
+                                  title="Permanently purge user and attempts"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Purge</span>
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
                       )
                     })
                   )}
+
                 </tbody>
               </table>
             </div>
@@ -617,8 +830,160 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: AUDIT TRAIL */}
+      {/* TAB: CAUTIOUS DELETE USER */}
+      {activeTab === 'purge' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-rose-200 rounded-xl p-6 shadow-sm space-y-6">
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 flex-shrink-0">
+                <AlertOctagon className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-base font-bold text-slate-900">Cautious User & Record Purge</h2>
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-rose-100 text-rose-700 border border-rose-200">
+                    Irreversible
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
+                  Safely and permanently purge a student or user account along with all dependent assessment records.
+                  This cleans out student profiles, roster entries, exam attempts, autosaved answers, and proctoring
+                  telemetry, and deletes their Supabase Auth record so they can be re-enrolled immediately if an
+                  email or PRN typo occurred.
+                </p>
+              </div>
+            </div>
+
+            {/* Warning Callout */}
+            <div className="p-4 bg-rose-50/80 border border-rose-200 rounded-lg text-xs space-y-2 text-rose-900">
+              <div className="flex items-center space-x-2 font-semibold text-rose-800">
+                <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                <span>Safeguards & Security Verification</span>
+              </div>
+              <ul className="list-disc pl-5 space-y-1 text-slate-700">
+                <li>
+                  <strong>Admin Self-Protection:</strong> Administrators cannot delete their own account or any other administrator.
+                </li>
+                <li>
+                  <strong>Complete Cascade:</strong> All quiz submissions, proctoring alerts, and grade adjustments linked to this user are cleanly removed.
+                </li>
+                <li>
+                  <strong>Supabase Auth Sync:</strong> The user's Supabase credentials are permanently cleared, allowing them to re-register with the correct email or PRN.
+                </li>
+                <li>
+                  <strong>Mandatory Verification:</strong> Requires target email re-confirmation and administrative security password.
+                </li>
+              </ul>
+            </div>
+
+            {/* Purge Form */}
+            <form onSubmit={handlePurgeUser} className="space-y-4 max-w-xl pt-2">
+              <div>
+                <label htmlFor="purge-email" className="block text-xs font-semibold text-slate-700 mb-1">
+                  Target User Email to Delete
+                </label>
+                <input
+                  id="purge-email"
+                  type="email"
+                  required
+                  placeholder="e.g. 202401110045@mitaoe.ac.in"
+                  value={purgeTargetEmail}
+                  onChange={(e) => setPurgeTargetEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="purge-confirm-email" className="block text-xs font-semibold text-slate-700 mb-1">
+                  Re-type Target Email to Confirm
+                </label>
+                <input
+                  id="purge-confirm-email"
+                  type="email"
+                  required
+                  placeholder="Re-enter identical email address"
+                  value={purgeConfirmEmail}
+                  onChange={(e) => setPurgeConfirmEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+                {purgeTargetEmail && purgeConfirmEmail && purgeTargetEmail.toLowerCase() !== purgeConfirmEmail.toLowerCase() && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-medium">Emails do not match.</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="purge-admin-pass" className="block text-xs font-semibold text-slate-700 mb-1">
+                  Administrative Security Password / Token
+                </label>
+                <div className="relative">
+                  <input
+                    id="purge-admin-pass"
+                    type={showPurgePass ? 'text' : 'password'}
+                    required
+                    placeholder="Enter your admin account password or authorization token"
+                    value={purgeAdminPassword}
+                    onChange={(e) => setPurgeAdminPassword(e.target.value)}
+                    className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPurgePass(!showPurgePass)}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPurgePass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Verifies that only an authorized administrator can delete user data.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={
+                    purgingUser ||
+                    !purgeTargetEmail.trim() ||
+                    !purgeConfirmEmail.trim() ||
+                    purgeTargetEmail.toLowerCase() !== purgeConfirmEmail.toLowerCase() ||
+                    !purgeAdminPassword.trim()
+                  }
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold flex items-center space-x-2 transition-colors shadow-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{purgingUser ? 'Purging User Records...' : 'Permanently Purge User Account'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Last Execution Outcome */}
+            {purgeResult && (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-3">
+                <div className="flex items-center space-x-2 text-emerald-700 font-semibold">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{purgeResult.message}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] text-slate-700">
+                  {Object.entries(purgeResult.cleared_records).map(([table, count]) => (
+                    <div key={table} className="p-2 bg-white rounded border border-slate-200">
+                      <div className="text-slate-500 text-[10px] capitalize">{table.replace(/_/g, ' ')}</div>
+                      <div className="font-bold text-slate-900">{count} cleared</div>
+                    </div>
+                  ))}
+                  <div className="p-2 bg-white rounded border border-slate-200">
+                    <div className="text-slate-500 text-[10px]">Supabase Auth</div>
+                    <div className="font-bold text-emerald-700">Purged</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: AUDIT TRAIL */}
       {activeTab === 'audit' && (
+
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -717,21 +1082,106 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 4: GUARDED TEST DATA RESET */}
+      {/* TAB 5: GUARDED RESET & WORKSPACE */}
       {activeTab === 'reset' && (
         <div className="space-y-6">
+          {/* Card 1: Clean Teacher Workspace (Testing Rehearsal) */}
+          <div className="bg-white border border-indigo-200 rounded-xl p-6 shadow-sm space-y-6">
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 flex-shrink-0">
+                <RotateCcw className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-base font-bold text-slate-900">Clean Teacher Workspace (Testing Rehearsal)</h2>
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-indigo-100 text-indigo-700 border border-indigo-200">
+                    Preserves Faculty & Admin
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
+                  Tailored specifically for teacher experimentation and trial testing. Clears all test candidate data
+                  (student accounts, student profiles, roster assignments, attempts, answers, and test quizzes) while
+                  strictly preserving all Teacher/Faculty accounts and Administrator accounts so instructors can
+                  repeatedly run practice exams with a clean candidate slate.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs space-y-2 text-indigo-950">
+              <div className="flex items-center space-x-2 font-semibold text-indigo-900">
+                <Info className="w-4 h-4 text-indigo-600" />
+                <span>Rehearsal Wipe Policy</span>
+              </div>
+              <ul className="list-disc pl-5 space-y-1 text-slate-700">
+                <li>
+                  <strong>Teachers & Admins Safe:</strong> Teacher accounts, logins, and administrator profiles are NEVER deleted.
+                </li>
+                <li>
+                  <strong>Candidate Reset:</strong> All test student accounts in PostgreSQL and Supabase Auth are purged so they can be re-enrolled cleanly.
+                </li>
+                <li>
+                  <strong>Clean Slate:</strong> All test attempts, telemetry events, grade adjustments, and test quizzes are cleared.
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              {resetStatus?.can_reset ? (
+                <button
+                  type="button"
+                  onClick={() => setShowCleanWorkspaceModal(true)}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-2 transition-colors shadow-sm"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Initiate Clean Teacher Workspace</span>
+                </button>
+              ) : (
+                <div className="p-3 bg-slate-100 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-center space-x-2">
+                  <Lock className="w-4 h-4 text-slate-500" />
+                  <span>Clean workspace reset is currently disabled by system configuration.</span>
+                </div>
+              )}
+            </div>
+
+            {cleanWorkspaceResult && (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-2">
+                <div className="flex items-center space-x-2 text-emerald-800 font-semibold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>{cleanWorkspaceResult.message}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] text-slate-700">
+                  <div className="p-2 bg-white rounded border border-emerald-200">
+                    <div className="text-slate-500 text-[10px]">Students Purged</div>
+                    <div className="font-bold text-slate-900">{cleanWorkspaceResult.purged_students_count} removed</div>
+                  </div>
+                  <div className="p-2 bg-white rounded border border-emerald-200">
+                    <div className="text-slate-500 text-[10px]">Teachers Preserved</div>
+                    <div className="font-bold text-indigo-700">{cleanWorkspaceResult.preserved_teachers_count} intact</div>
+                  </div>
+                  {Object.entries(cleanWorkspaceResult.cleared_records).slice(0, 2).map(([table, count]) => (
+                    <div key={table} className="p-2 bg-white rounded border border-emerald-200">
+                      <div className="text-slate-500 text-[10px] capitalize">{table.replace(/_/g, ' ')}</div>
+                      <div className="font-bold text-slate-900">{count} cleared</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Card 2: Factory Baseline Test Data Reset */}
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
             <div className="flex items-start space-x-4">
               <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 flex-shrink-0">
                 <Trash2 className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h2 className="text-base font-bold text-slate-900">Guarded Database / Test Data Reset</h2>
+                <h2 className="text-base font-bold text-slate-900">Complete Assessment Data Wipe (Factory Baseline)</h2>
                 <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
                   High-risk maintenance utility intended solely for developer testing and QA rehearsal.
                   Clears application assessment data (quizzes, immutable versions, question banks, roster
                   assignments, candidate attempts, answers, and telemetry) to return the environment to an
-                  empty baseline.
+                  empty baseline. User accounts are preserved.
                 </p>
               </div>
             </div>
@@ -771,30 +1221,6 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Notice & Safeguard Breakdown */}
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-2 text-amber-900">
-              <div className="flex items-center space-x-2 font-semibold">
-                <Info className="w-4 h-4 text-amber-600" />
-                <span>Safeguards & Preservation Policy</span>
-              </div>
-              <ul className="list-disc pl-5 space-y-1 text-slate-700">
-                <li>
-                  <strong>Accounts Preserved:</strong> User authentication accounts (Administrators,
-                  Teachers, and Students) are strictly preserved so you never lose administrative access.
-                </li>
-                <li>
-                  <strong>Audit History Preserved:</strong> The tamper-evident audit log is kept intact, and
-                  a distinct <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">system.destructive_reset</code> event is recorded with details.
-                </li>
-                <li>
-                  <strong>Production Hard Block:</strong> When <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">ENVIRONMENT=production</code>, this endpoint unconditionally returns 403 Forbidden.
-                </li>
-                <li>
-                  <strong>Explicit Confirmation:</strong> Requires submitting token <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">CONFIRM_DELETE_ALL_TEST_DATA</code>.
-                </li>
-              </ul>
-            </div>
-
             {/* Action Trigger */}
             <div className="pt-2">
               {resetStatus?.can_reset ? (
@@ -804,7 +1230,7 @@ export const AdminDashboard: React.FC = () => {
                   className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-2 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>Initiate Guarded Test Data Reset</span>
+                  <span>Initiate Complete Test Data Reset</span>
                 </button>
               ) : (
                 <div className="p-3 bg-slate-100 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-center space-x-2">
@@ -835,19 +1261,19 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: GUARDED RESET CONFIRMATION */}
+      {/* MODAL 1: COMPLETE TEST DATA RESET CONFIRMATION */}
       {showResetModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full p-6 space-y-4 shadow-xl">
             <div className="flex items-center space-x-3 text-rose-600">
               <AlertTriangle className="w-6 h-6 flex-shrink-0" />
-              <h3 className="text-base font-bold text-slate-900">Confirm Destructive Reset</h3>
+              <h3 className="text-base font-bold text-slate-900">Confirm Complete Assessment Reset</h3>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
               This action will permanently delete all quizzes, immutable versions, question banks,
-              roster assignments, and candidate attempts. Administrator access will remain intact,
-              and this operation will be permanently recorded in the audit log.
+              roster assignments, and candidate attempts across the entire system. Administrator and
+              user accounts remain intact.
             </p>
 
             <form onSubmit={handleExecuteReset} className="space-y-4 pt-2">
@@ -891,6 +1317,230 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* MODAL 2: CLEAN TEACHER WORKSPACE CONFIRMATION */}
+      {showCleanWorkspaceModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center space-x-3 text-indigo-600">
+              <RotateCcw className="w-6 h-6 flex-shrink-0" />
+              <h3 className="text-base font-bold text-slate-900">Clean Teacher Workspace</h3>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              This will permanently delete all student accounts, profiles, roster entries, exam attempts,
+              and test quizzes. <strong>Teacher and Admin accounts will remain completely intact.</strong>
+            </p>
+
+            <form onSubmit={handleExecuteCleanWorkspace} className="space-y-4 pt-2">
+              <div>
+                <label htmlFor="clean-workspace-code" className="block text-xs font-semibold text-slate-700 mb-1">
+                  Type <span className="font-mono text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded">CONFIRM_CLEAN_TEACHER_WORKSPACE</span> to verify:
+                </label>
+                <input
+                  id="clean-workspace-code"
+                  type="text"
+                  required
+                  value={cleanWorkspaceConfirmInput}
+                  onChange={(e) => setCleanWorkspaceConfirmInput(e.target.value)}
+                  placeholder="CONFIRM_CLEAN_TEACHER_WORKSPACE"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  disabled={cleaningWorkspace}
+                  onClick={() => {
+                    setShowCleanWorkspaceModal(false)
+                    setCleanWorkspaceConfirmInput('')
+                  }}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={cleaningWorkspace || cleanWorkspaceConfirmInput !== 'CONFIRM_CLEAN_TEACHER_WORKSPACE'}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold transition-colors flex items-center space-x-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{cleaningWorkspace ? 'Cleaning Workspace...' : 'Execute Clean Workspace'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: ONBOARD FACULTY MEMBER */}
+      {showTeacherModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Onboard Faculty Member</h3>
+                  <p className="text-[11px] text-slate-500">Provision authorized educator account</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTeacherModal(false)
+                  setCreatedTeacherCreds(null)
+                }}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {createdTeacherCreds ? (
+              <div className="space-y-4 pt-1">
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-xs">
+                  <div className="flex items-center space-x-2 text-emerald-800 font-semibold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>Faculty Account Activated!</span>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed">
+                    This account is confirmed and ready for use immediately on the Faculty Portal.
+                  </p>
+                  <div className="mt-3 p-3 bg-white border border-emerald-200 rounded-lg font-mono text-[11px] space-y-1.5 text-slate-800">
+                    <div>
+                      <span className="text-slate-400">Name:</span> {createdTeacherCreds.name}
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Email:</span> {createdTeacherCreds.email}
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Initial Password:</span> {createdTeacherCreds.password}
+                    </div>
+                    <div className="text-[10px] text-indigo-600 pt-1">
+                      Portal: {window.location.origin}/teacher/login
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={copyTeacherCredentials}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+                  >
+                    {credsCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{credsCopied ? 'Copied to Clipboard!' : 'Copy Credentials'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTeacherModal(false)
+                      setCreatedTeacherCreds(null)
+                    }}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateTeacher} className="space-y-3.5 pt-1">
+                <div>
+                  <label htmlFor="teacher-name" className="block text-xs font-semibold text-slate-700 mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    id="teacher-name"
+                    type="text"
+                    required
+                    placeholder="e.g. Dr. Radhika Sharma"
+                    value={teacherName}
+                    onChange={(e) => setTeacherName(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="teacher-email" className="block text-xs font-semibold text-slate-700 mb-1">
+                    Institutional Email Address
+                  </label>
+                  <input
+                    id="teacher-email"
+                    type="email"
+                    required
+                    placeholder="e.g. radhika.sharma@mitaoe.ac.in"
+                    value={teacherEmail}
+                    onChange={(e) => setTeacherEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="teacher-password" className="text-xs font-semibold text-slate-700">
+                      Initial Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={generateRandomPassword}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center space-x-1"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Generate Secure</span>
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="teacher-password"
+                      type={showTeacherPass ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      placeholder="Minimum 6 characters"
+                      value={teacherPassword}
+                      onChange={(e) => setTeacherPassword(e.target.value)}
+                      className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTeacherPass(!showTeacherPass)}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showTeacherPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    The teacher can sign in immediately or reset password anytime via Faculty Portal.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={creatingTeacher}
+                    onClick={() => setShowTeacherModal(false)}
+                    className="px-3.5 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingTeacher}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold transition-colors flex items-center space-x-1.5 shadow-sm"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>{creatingTeacher ? 'Provisioning Account...' : 'Provision Faculty Account'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

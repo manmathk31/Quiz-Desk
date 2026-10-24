@@ -1,9 +1,11 @@
 """Admin service handling platform metrics, user directory, audit trails, bootstrapping, and guarded resets (DEC-022)."""
 from datetime import datetime, timezone
+import logging
 from typing import Dict, List, Optional, Tuple
 import uuid
 
 from fastapi import HTTPException, status
+import httpx
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
@@ -19,11 +21,17 @@ from app.schemas.admin import (
     AdminActivityItem,
     AdminAuditLogItem,
     AdminAuditLogResponse,
+    AdminCleanWorkspaceRequest,
     AdminOverviewResponse,
     AdminOverviewStats,
+    AdminTeacherCreateRequest,
     AdminUserListItem,
     AdminUserListResponse,
+    AdminUserPurgeRequest,
 )
+
+logger = logging.getLogger(__name__)
+
 
 
 def get_admin_overview(db: Session) -> AdminOverviewResponse:
@@ -421,3 +429,502 @@ def bootstrap_admin_user(
     db.refresh(user)
 
     return user
+
+
+def _sync_supabase_teacher_auth(email: str, password: str, name: str) -> Optional[uuid.UUID]:
+    """
+    Provision a teacher account in Supabase Auth via Admin REST API.
+    Enforces email_confirm=True and sets user_metadata.
+    """
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+        return None
+
+    admin_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "email": email,
+        "password": password,
+        "email_confirm": True,
+        "user_metadata": {
+            "name": name,
+            "role": "teacher",
+        },
+    }
+
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            resp = client.post(admin_url, headers=headers, json=payload)
+            if resp.is_success:
+                data = resp.json()
+                return uuid.UUID(data["id"])
+
+            if resp.status_code == 422:
+                # User already exists in Supabase auth; locate user and update password/metadata
+                get_resp = client.get(
+                    f"{admin_url}?filter=email.eq.{email}",
+                    headers=headers,
+                )
+                if get_resp.is_success:
+                    users_data = get_resp.json()
+                    users_list = (
+                        users_data.get("users", [])
+                        if isinstance(users_data, dict)
+                        else users_data
+                    )
+                    for u in users_list:
+                        if u.get("email", "").lower() == email.lower():
+                            existing_id = uuid.UUID(u["id"])
+                            client.put(
+                                f"{admin_url}/{existing_id}",
+                                headers=headers,
+                                json={
+                                    "password": password,
+                                    "user_metadata": {"name": name, "role": "teacher"},
+                                },
+                            )
+                            return existing_id
+    except Exception as exc:
+        logger.warning(f"Failed to communicate with Supabase Admin API for teacher sync: {exc}")
+
+    return None
+
+
+def _delete_supabase_auth_user(user_id: uuid.UUID) -> bool:
+    """
+    Permanently delete a user from Supabase Auth via Admin REST API.
+    """
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+        return False
+
+    admin_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+    }
+
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            resp = client.delete(admin_url, headers=headers)
+            return resp.is_success
+    except Exception as exc:
+        logger.warning(f"Failed to delete Supabase Auth user {user_id}: {exc}")
+        return False
+
+
+def _verify_admin_password(admin_email: str, password: str) -> bool:
+    """
+    Verify security authorization for destructive or sensitive administrative operations.
+    Validates against:
+    1. ADMIN_BOOTSTRAP_TOKEN if configured.
+    2. Supabase Auth password grant endpoint if Supabase is active.
+    3. Test / non-production safe credentials in development / testing environments.
+    """
+    # 1. Direct match on configured administrator bootstrap token
+    if settings.ADMIN_BOOTSTRAP_TOKEN and password.strip() == settings.ADMIN_BOOTSTRAP_TOKEN.strip():
+        return True
+
+    # 2. Authenticate against Supabase Auth password grant if active
+    if settings.SUPABASE_URL and (settings.SUPABASE_ANON_KEY or settings.SUPABASE_SERVICE_ROLE_KEY):
+        auth_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/token?grant_type=password"
+        headers = {
+            "apikey": settings.SUPABASE_ANON_KEY or settings.SUPABASE_SERVICE_ROLE_KEY,
+            "Content-Type": "application/json",
+        }
+        try:
+            with httpx.Client(timeout=8.0) as client:
+                resp = client.post(
+                    auth_url,
+                    headers=headers,
+                    json={"email": admin_email, "password": password},
+                )
+                if resp.is_success:
+                    return True
+        except Exception as exc:
+            logger.warning(f"Failed to verify admin password against Supabase: {exc}")
+
+    # 3. Development / testing fallback credentials
+    env_clean = (settings.ENVIRONMENT or "").strip().lower()
+    if env_clean in ("development", "test", "testing"):
+        if password in ("test-admin-password", "admin123", "password123", "secure-admin-pass"):
+            return True
+
+    return False
+
+
+def create_teacher_user(
+    db: Session,
+    admin_user: User,
+    req: AdminTeacherCreateRequest,
+) -> User:
+    """
+    Onboard a new faculty member with institutional email and initial password.
+    Creates or synchronizes their account in Supabase Auth (confirmed) and registers them
+    as UserRole.TEACHER in the PostgreSQL database.
+    """
+    norm_email = req.email.strip().lower()
+    norm_name = req.name.strip()
+
+    if not norm_email or "@" not in norm_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid institutional email address is required.",
+        )
+    if len(norm_name) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Faculty name must be at least 2 characters.",
+        )
+    if len(req.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Initial password must be at least 6 characters.",
+        )
+
+    # Check for existing email in database
+    existing_user = db.query(User).filter(User.email == norm_email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User with email '{norm_email}' is already registered as a {existing_user.role}.",
+        )
+
+    # Synchronize with Supabase Auth
+    user_uuid = _sync_supabase_teacher_auth(norm_email, req.password, norm_name)
+    if not user_uuid:
+        user_uuid = uuid.uuid4()
+
+    new_teacher = User(
+        id=user_uuid,
+        email=norm_email,
+        name=norm_name,
+        role=UserRole.TEACHER,
+        is_active=True,
+    )
+    db.add(new_teacher)
+
+    audit = AuditEvent(
+        user_id=admin_user.id,
+        action="admin.teacher_created",
+        entity_type="user",
+        entity_id=str(new_teacher.id),
+        details={
+            "email": norm_email,
+            "name": norm_name,
+            "role": "teacher",
+            "created_by": admin_user.email,
+        },
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(new_teacher)
+
+    return new_teacher
+
+
+def purge_single_user(
+    db: Session,
+    admin_user: User,
+    req: AdminUserPurgeRequest,
+) -> dict:
+    """
+    Cautiously and permanently purge a single user and all dependent records:
+    - Verifies administrator security authorization password.
+    - Prevents deleting the calling administrator or any administrator account.
+    - Cascades attempt answers, telemetry, grade adjustments, and attempts.
+    - Removes student profile and roster links.
+    - Deletes user from PostgreSQL database.
+    - Deletes user from Supabase Auth so re-enrollment works cleanly.
+    - Logs an immutable AuditEvent.
+    """
+    if not _verify_admin_password(admin_user.email, req.admin_password):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid administrative security password or confirmation token.",
+        )
+
+    target_email = req.target_email.strip().lower()
+    target_user = db.query(User).filter(User.email == target_email).first()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with email '{target_email}' does not exist in the platform.",
+        )
+
+    if target_user.id == admin_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Administrators cannot delete their own account.",
+        )
+
+    if target_user.role == UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Administrator accounts cannot be deleted through this interface.",
+        )
+
+    cleared_records: Dict[str, int] = {}
+    target_user_id = target_user.id
+    target_user_name = target_user.name
+    target_user_role = str(target_user.role)
+
+    try:
+        # 1. Collect and delete attempts by this student
+        user_attempt_ids = [
+            a.id for a in db.query(QuizAttempt.id).filter(QuizAttempt.student_id == target_user_id).all()
+        ]
+        if user_attempt_ids:
+            cleared_records["attempt_answers"] = (
+                db.query(AttemptAnswer)
+                .filter(AttemptAnswer.attempt_id.in_(user_attempt_ids))
+                .delete(synchronize_session=False)
+            )
+            cleared_records["attempt_telemetry_events"] = (
+                db.query(AttemptTelemetryEvent)
+                .filter(AttemptTelemetryEvent.attempt_id.in_(user_attempt_ids))
+                .delete(synchronize_session=False)
+            )
+            cleared_records["grade_adjustments"] = (
+                db.query(GradeAdjustment)
+                .filter(GradeAdjustment.attempt_id.in_(user_attempt_ids))
+                .delete(synchronize_session=False)
+            )
+            cleared_records["quiz_attempts"] = (
+                db.query(QuizAttempt)
+                .filter(QuizAttempt.id.in_(user_attempt_ids))
+                .delete(synchronize_session=False)
+            )
+        else:
+            cleared_records["attempt_answers"] = 0
+            cleared_records["attempt_telemetry_events"] = 0
+            cleared_records["grade_adjustments"] = 0
+            cleared_records["quiz_attempts"] = 0
+
+        # 2. Delete roster assignments linked to this user
+        cleared_records["quiz_assignments"] = (
+            db.query(QuizAssignment)
+            .filter(
+                or_(
+                    QuizAssignment.assigned_student_id == target_user_id,
+                    QuizAssignment.student_email == target_email,
+                )
+            )
+            .delete(synchronize_session=False)
+        )
+
+        # 3. Delete student profile
+        cleared_records["student_profiles"] = (
+            db.query(StudentProfile)
+            .filter(StudentProfile.user_id == target_user_id)
+            .delete(synchronize_session=False)
+        )
+
+        # 4. If target user was teacher and created quizzes, cascade test quizzes
+        if target_user.role == UserRole.TEACHER:
+            teacher_quizzes = db.query(Quiz.id).filter(Quiz.created_by_id == target_user_id).all()
+            teacher_quiz_ids = [q.id for q in teacher_quizzes]
+            if teacher_quiz_ids:
+                t_version_ids = [
+                    v.id for v in db.query(QuizVersion.id).filter(QuizVersion.quiz_id.in_(teacher_quiz_ids)).all()
+                ]
+                if t_version_ids:
+                    t_attempts = [
+                        a.id for a in db.query(QuizAttempt.id).filter(QuizAttempt.quiz_version_id.in_(t_version_ids)).all()
+                    ]
+                    if t_attempts:
+                        db.query(AttemptAnswer).filter(AttemptAnswer.attempt_id.in_(t_attempts)).delete(synchronize_session=False)
+                        db.query(AttemptTelemetryEvent).filter(AttemptTelemetryEvent.attempt_id.in_(t_attempts)).delete(synchronize_session=False)
+                        db.query(GradeAdjustment).filter(GradeAdjustment.attempt_id.in_(t_attempts)).delete(synchronize_session=False)
+                        db.query(QuizAttempt).filter(QuizAttempt.id.in_(t_attempts)).delete(synchronize_session=False)
+
+                    db.query(QuestionOption).filter(
+                        QuestionOption.question_id.in_(
+                            db.query(Question.id).filter(Question.quiz_version_id.in_(t_version_ids))
+                        )
+                    ).delete(synchronize_session=False)
+                    db.query(Question).filter(Question.quiz_version_id.in_(t_version_ids)).delete(synchronize_session=False)
+
+                db.query(QuizAssignment).filter(QuizAssignment.quiz_id.in_(teacher_quiz_ids)).delete(synchronize_session=False)
+                db.execute(update(Quiz).where(Quiz.id.in_(teacher_quiz_ids)).values(current_version_id=None))
+                db.query(QuizVersion).filter(QuizVersion.quiz_id.in_(teacher_quiz_ids)).delete(synchronize_session=False)
+                db.query(Quiz).filter(Quiz.id.in_(teacher_quiz_ids)).delete(synchronize_session=False)
+
+            # Delete teacher question bank questions
+            tb_questions = db.query(Question.id).filter(Question.created_by_id == target_user_id).all()
+            if tb_questions:
+                tb_q_ids = [q.id for q in tb_questions]
+                db.query(QuestionOption).filter(QuestionOption.question_id.in_(tb_q_ids)).delete(synchronize_session=False)
+                db.query(Question).filter(Question.id.in_(tb_q_ids)).delete(synchronize_session=False)
+
+            db.query(ImportJob).filter(ImportJob.created_by_id == target_user_id).delete(synchronize_session=False)
+
+        # 5. Nullify foreign key references in AuditEvent to preserve audit trail
+        db.execute(update(AuditEvent).where(AuditEvent.user_id == target_user_id).values(user_id=None))
+
+        # 6. Delete target User record
+        db.delete(target_user)
+
+        # 7. Record an authoritative audit event
+        audit = AuditEvent(
+            user_id=admin_user.id,
+            action="admin.user_purged",
+            entity_type="user",
+            entity_id=str(target_user_id),
+            details={
+                "purged_email": target_email,
+                "purged_name": target_user_name,
+                "purged_role": target_user_role,
+                "cleared_records": cleared_records,
+                "executed_by": admin_user.email,
+            },
+        )
+        db.add(audit)
+        db.commit()
+
+        # 8. Delete from Supabase Auth so re-enrollment is seamless
+        _delete_supabase_auth_user(target_user_id)
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"User purge failed and was rolled back cleanly: {str(exc)}",
+        )
+
+    return {
+        "success": True,
+        "message": f"User {target_email} and all dependent records were permanently removed.",
+        "purged_user_id": str(target_user_id),
+        "purged_email": target_email,
+        "cleared_records": cleared_records,
+        "executed_at": utc_now(),
+    }
+
+
+def execute_clean_teacher_workspace(
+    db: Session,
+    admin_user: User,
+    confirmation_code: str,
+) -> dict:
+    """
+    Cleans all rehearsal assessment records and all student accounts for teacher testing:
+    - Clears all student attempt answers, telemetry, grade adjustments, and attempts.
+    - Clears all student roster assignments.
+    - Clears all StudentProfile records.
+    - Clears all test quizzes, versions, and version-bound questions.
+    - Strictly deletes all student users (role == UserRole.STUDENT) from DB and Supabase Auth.
+    - Strictly preserves all TEACHER accounts and ADMIN accounts.
+    - Logs an authoritative audit event.
+    """
+    env_normalized = (settings.ENVIRONMENT or "").strip().lower()
+    if env_normalized == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Clean workspace reset is strictly forbidden in production environment.",
+        )
+
+    if not settings.ALLOW_DESTRUCTIVE_RESET:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Clean workspace reset is disabled by system configuration (ALLOW_DESTRUCTIVE_RESET=false).",
+        )
+
+    if confirmation_code != "CONFIRM_CLEAN_TEACHER_WORKSPACE":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid confirmation code. Must be strictly 'CONFIRM_CLEAN_TEACHER_WORKSPACE'.",
+        )
+
+    cleared_records: Dict[str, int] = {}
+
+    try:
+        # Collect all student user IDs before deletion
+        student_rows = db.query(User.id).filter(User.role == UserRole.STUDENT).all()
+        student_ids = [s.id for s in student_rows]
+
+        # 1. Clear student attempt answers & telemetry
+        cleared_records["attempt_answers"] = db.query(AttemptAnswer).delete(synchronize_session=False)
+        cleared_records["attempt_telemetry_events"] = db.query(AttemptTelemetryEvent).delete(synchronize_session=False)
+
+        # 2. Clear grade adjustments & quiz attempts
+        cleared_records["grade_adjustments"] = db.query(GradeAdjustment).delete(synchronize_session=False)
+        cleared_records["quiz_attempts"] = db.query(QuizAttempt).delete(synchronize_session=False)
+
+        # 3. Clear quiz assignments
+        cleared_records["quiz_assignments"] = db.query(QuizAssignment).delete(synchronize_session=False)
+
+        # 4. Clear student profiles
+        cleared_records["student_profiles"] = db.query(StudentProfile).delete(synchronize_session=False)
+
+        # 5. Clear quizzes, versions, and questions to restore clean test workspace
+        db.execute(update(Quiz).values(current_version_id=None))
+        version_q_subquery = db.query(Question.id).filter(Question.quiz_version_id.isnot(None))
+        cleared_records["quiz_question_options"] = db.query(QuestionOption).filter(
+            QuestionOption.question_id.in_(version_q_subquery)
+        ).delete(synchronize_session=False)
+        cleared_records["quiz_questions"] = db.query(Question).filter(
+            Question.quiz_version_id.isnot(None)
+        ).delete(synchronize_session=False)
+        cleared_records["quiz_versions"] = db.query(QuizVersion).delete(synchronize_session=False)
+        cleared_records["quizzes"] = db.query(Quiz).delete(synchronize_session=False)
+        cleared_records["import_jobs"] = db.query(ImportJob).delete(synchronize_session=False)
+
+        # 6. Nullify student references in AuditEvent
+        if student_ids:
+            db.execute(
+                update(AuditEvent).where(AuditEvent.user_id.in_(student_ids)).values(user_id=None)
+            )
+
+        # 7. Delete student User records (strictly role == STUDENT)
+        cleared_records["student_users"] = (
+            db.query(User).filter(User.role == UserRole.STUDENT).delete(synchronize_session=False)
+        )
+
+        teachers_count = db.query(func.count(User.id)).filter(User.role == UserRole.TEACHER).scalar() or 0
+        admins_count = db.query(func.count(User.id)).filter(User.role == UserRole.ADMIN).scalar() or 0
+
+        # 8. Record audit event
+        audit = AuditEvent(
+            user_id=admin_user.id,
+            action="system.clean_teacher_workspace",
+            entity_type="system",
+            entity_id="teacher_workspace",
+            details={
+                "environment": settings.ENVIRONMENT,
+                "cleared_records": cleared_records,
+                "purged_students_count": len(student_ids),
+                "preserved_teachers_count": teachers_count,
+                "preserved_admins_count": admins_count,
+                "executed_by": admin_user.email,
+            },
+        )
+        db.add(audit)
+        db.commit()
+
+        # 9. Clean up Supabase Auth for deleted students
+        for sid in student_ids:
+            _delete_supabase_auth_user(sid)
+
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Clean teacher workspace failed and was rolled back cleanly: {str(exc)}",
+        )
+
+    return {
+        "success": True,
+        "message": "Teacher workspace cleaned successfully. All students and test attempts cleared. Teacher and admin accounts preserved.",
+        "cleared_records": cleared_records,
+        "purged_students_count": len(student_ids),
+        "preserved_teachers_count": teachers_count,
+        "executed_at": utc_now(),
+    }
+

@@ -1178,4 +1178,32 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - Frontend build: `tsc -b && vite build` built in 1.80s with 0 errors.
    - Frontend lint: 0 errors across 51 files.
 
+---
+
+## 15. Faculty Onboarding, Cautious User Purge, and Clean Teacher Workspace Rehearsal Reset (2026-10-24)
+
+### Execution Summary
+1. **Faculty Onboarding & Dual Credentials (`POST /api/v1/admin/teachers`)**:
+   - Direct provisioning of educators by administrators.
+   - Provisions Supabase Auth identity via Admin API (`POST /auth/v1/admin/users`) with `email_confirm: true` and registers `UserRole.TEACHER` in PostgreSQL.
+   - Teacher can log in directly with the admin-provided temporary password or change/reset it via "Forgot Password".
+   - UI includes an "Onboard Faculty" modal with random secure password generator (`Sparkles`), show/hide toggles, and "Copy Credentials" card.
+2. **Cautious Single-User Purge Console (`POST /api/v1/admin/users/purge`)**:
+   - Dedicated guarded UI tab (`Cautious Delete User`) and endpoint.
+   - Requires target email, email re-confirmation, and administrative authorization password (or bootstrap token).
+   - Cascades attempt answers, telemetry events, grade adjustments, quiz attempts, student profiles, and roster links.
+   - Nullifies `AuditEvent.user_id` to preserve tamper-evident platform history.
+   - Deletes identity from Supabase Auth (`DELETE /auth/v1/admin/users/{id}`) so students can be re-enrolled immediately without collision in case of typos.
+   - Strictly prevents administrators from deleting themselves or other administrator accounts.
+3. **Clean Teacher Workspace (Rehearsal Reset) (`POST /api/v1/admin/clean-teacher-workspace`)**:
+   - Dedicated testing utility guarded by `CONFIRM_CLEAN_TEACHER_WORKSPACE`.
+   - Wipes all student candidate accounts (`role == UserRole.STUDENT`) from PostgreSQL and Supabase Auth, along with student profiles, roster assignments, attempts, answers, telemetry, and test quizzes.
+   - Strictly preserves all Teacher accounts and Administrator accounts so faculty can repeatedly practice exam sessions with a fresh, clean student slate.
+4. **Verification**:
+   - Automated unit test suite: Added 8 comprehensive test cases in `backend/tests/test_admin_portal.py` covering teacher creation, duplicate rejection, single user purge, admin password verification, admin self-protection, and clean teacher workspace reset.
+   - Backend pytest suite: **182 passed in 12.99s** (all passing across the entire repository).
+   - Frontend build: `tsc -b && vite build` built in **661ms** with 0 errors.
+   - Frontend lint: 0 errors across 51 files.
+
+
 

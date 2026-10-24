@@ -3,13 +3,18 @@
  */
 import type {
   AdminAuditLogResponse,
+  AdminCleanWorkspaceResponse,
   AdminDestructiveResetResponse,
   AdminOverviewResponse,
   AdminResetStatusResponse,
+  AdminTeacherCreateRequest,
   AdminUserListItem,
   AdminUserListResponse,
+  AdminUserPurgeRequest,
+  AdminUserPurgeResponse,
 } from '../types/admin'
 import type { UserProfile } from '../types/auth'
+
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -126,3 +131,40 @@ export async function bootstrapAdminUser(
   })
   return handleResponse<UserProfile>(response, 'Administrator initial bootstrap failed')
 }
+
+export async function createAdminTeacher(
+  token: string,
+  payload: AdminTeacherCreateRequest
+): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/teachers`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  })
+  return handleResponse<UserProfile>(response, 'Failed to create faculty account')
+}
+
+export async function purgeAdminUser(
+  token: string,
+  payload: AdminUserPurgeRequest
+): Promise<AdminUserPurgeResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/users/purge`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  })
+  return handleResponse<AdminUserPurgeResponse>(response, 'Failed to purge user account')
+}
+
+export async function executeCleanTeacherWorkspace(
+  token: string,
+  confirmationCode: string
+): Promise<AdminCleanWorkspaceResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/clean-teacher-workspace`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ confirmation_code: confirmationCode }),
+  })
+  return handleResponse<AdminCleanWorkspaceResponse>(response, 'Failed to execute clean workspace reset')
+}
+

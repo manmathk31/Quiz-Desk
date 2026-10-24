@@ -76,3 +76,33 @@ export interface AdminDestructiveResetResponse {
   cleared_records: Record<string, number>
   executed_at: string
 }
+
+export interface AdminTeacherCreateRequest {
+  email: string
+  name: string
+  password: string
+}
+
+export interface AdminUserPurgeRequest {
+  target_email: string
+  admin_password: string
+}
+
+export interface AdminUserPurgeResponse {
+  success: boolean
+  message: string
+  purged_user_id: string
+  purged_email: string
+  cleared_records: Record<string, number>
+  executed_at: string
+}
+
+export interface AdminCleanWorkspaceResponse {
+  success: boolean
+  message: string
+  cleared_records: Record<string, number>
+  purged_students_count: number
+  preserved_teachers_count: number
+  executed_at: string
+}
+
