@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Loader2,
   FolderOpen,
+  RefreshCw,
 } from 'lucide-react'
 
 
@@ -187,6 +188,17 @@ export const QuestionBank: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={loadQuestions}
+            disabled={isLoading}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-medium transition-colors shadow-2xs disabled:opacity-50"
+            title="Refresh question bank"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+
           <button
             type="button"
             onClick={handleDownloadTemplate}

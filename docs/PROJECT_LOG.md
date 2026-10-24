@@ -1205,5 +1205,29 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - Frontend build: `tsc -b && vite build` built in **661ms** with 0 errors.
    - Frontend lint: 0 errors across 51 files.
 
+---
+
+## 16. Telemetry Refresh Architecture, Teacher Welcome Experience & Pre-Testing Optimization (2026-10-24)
+
+### Execution Summary
+1. **Telemetry & On-Demand Refresh Architecture**:
+   - Confirmed architectural best practice: Continuous, unthrottled auto-polling of aggregation endpoints (`COUNT(*)`, active submissions, telemetry anomalies) in concurrent exam platforms causes the "Thundering Herd" problem, locks DB connection pools, and degrades server throughput.
+   - Verified that all telemetry and data views adhere to **On-Demand Manual Refresh** with spinning indicators and disabled states during in-flight requests.
+   - Standardized manual refresh buttons across:
+     - `QuizList.tsx`: Added on-demand refresh for teacher quiz catalog.
+     - `QuizResults.tsx`: Added prominent on-demand refresh in primary action toolbar and animated table refresh indicator for real-time submission review.
+     - `QuestionBank.tsx`: Added on-demand refresh for question bank items.
+     - `RosterTab.tsx`: Added on-demand refresh for roster and student enrollment match verification.
+2. **Personalized Faculty Welcome Experience**:
+   - Implemented a warm, dignified welcome banner on the teacher's primary landing view (`/teacher/quizzes` in `QuizList.tsx`):
+     - Gradient avatar badge with faculty initial (`from-indigo-600 to-blue-700`).
+     - "Welcome, Professor {profile?.name || 'Faculty Member'}! 👋".
+     - Institutional context: `{profile?.email} • MIT Academy of Engineering`.
+     - Distinct "Faculty Portal" status badge.
+3. **Pre-Testing System Verification**:
+   - Backend unit tests (`pytest`): 182 passed in 15.04s (0 failures).
+   - Frontend lint (`oxlint`): 0 errors across 51 files.
+   - Frontend production build (`tsc -b && vite build`): Succeeded in 741ms (0 errors).
+
 
 

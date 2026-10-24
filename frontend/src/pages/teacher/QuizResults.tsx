@@ -258,11 +258,24 @@ export const QuizResults: React.FC = () => {
             </h1>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2.5">
+            <button
+              onClick={() => {
+                loadSummary()
+                loadAttempts()
+              }}
+              disabled={summaryLoading || attemptsLoading}
+              className="inline-flex items-center px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
+              title="Refresh Assessment Results and Submissions"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 text-slate-600 ${summaryLoading || attemptsLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+
             <button
               onClick={handleExportCsv}
               disabled={exporting}
-              className="inline-flex items-center px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+              className="inline-flex items-center px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
             >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               {exporting ? 'Exporting...' : exportSuccess ? 'Downloaded!' : 'Export CSV'}
@@ -271,7 +284,7 @@ export const QuizResults: React.FC = () => {
             {!summary?.is_results_released && (
               <button
                 onClick={() => setShowReleaseModal(true)}
-                className="inline-flex items-center px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm"
+                className="inline-flex items-center px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-2xs"
               >
                 <Share2 className="w-3.5 h-3.5 mr-1.5" />
                 Release Results
@@ -386,10 +399,11 @@ export const QuizResults: React.FC = () => {
                 loadSummary()
                 loadAttempts()
               }}
+              disabled={attemptsLoading}
               title="Refresh attempts list"
-              className="p-1.5 text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              className="p-1.5 text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className={`w-4 h-4 ${attemptsLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>

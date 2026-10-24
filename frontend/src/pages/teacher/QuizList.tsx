@@ -16,10 +16,11 @@ import {
   FolderOpen,
   X,
   Award,
+  RefreshCw,
 } from 'lucide-react'
 
 export const QuizList: React.FC = () => {
-  const { session } = useAuth()
+  const { session, profile } = useAuth()
   const token = session?.access_token || ''
   const navigate = useNavigate()
 
@@ -121,34 +122,69 @@ export const QuizList: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6 text-slate-900">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+      {/* Header with Personalized Faculty Welcome */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-slate-200 gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Assessments & Quizzes</h1>
-            <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-full border border-slate-200">
-              {quizzes.length} {quizzes.length === 1 ? 'Quiz' : 'Quizzes'}
-            </span>
+          <div className="flex items-center space-x-3 mb-1">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-800 flex items-center justify-center text-white font-bold text-lg shadow-md shadow-indigo-500/20">
+              {profile?.name ? profile.name.charAt(0).toUpperCase() : 'F'}
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h1 className="text-xl font-bold text-slate-900">
+                  Welcome, Professor {profile?.name || 'Faculty Member'}! 👋
+                </h1>
+                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wider rounded-md border border-indigo-200">
+                  Faculty Portal
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {profile?.email || 'Academic Evaluator'} • MIT Academy of Engineering
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+        </div>
+
+        <div className="flex items-center space-x-2.5">
+          <button
+            type="button"
+            onClick={loadQuizzes}
+            disabled={isLoading}
+            className="flex items-center space-x-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
+            title="Refresh Quiz Catalog"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setTitle('')
+              setCourseCode('')
+              setDescription('')
+              setCreateError(null)
+              setIsCreateModalOpen(true)
+            }}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors shadow-2xs shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Quiz Draft</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Sub-Header: Catalog Count */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold text-slate-800">Assessments & Quizzes</h2>
+          <p className="text-xs text-slate-500">
             Author quizzes, configure academic parameters, clone question sets, and publish immutable versions
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setTitle('')
-            setCourseCode('')
-            setDescription('')
-            setCreateError(null)
-            setIsCreateModalOpen(true)
-          }}
-          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-colors shadow-2xs shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Quiz Draft</span>
-        </button>
+        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200">
+          {quizzes.length} {quizzes.length === 1 ? 'Quiz' : 'Quizzes'}
+        </span>
       </div>
 
       {/* Error Banner */}

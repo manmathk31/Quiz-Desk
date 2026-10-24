@@ -11,6 +11,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   FileSpreadsheet,
+  RefreshCw,
 } from 'lucide-react'
 import {
   fetchAssignments,
@@ -171,6 +172,15 @@ export const RosterTab: React.FC<RosterTabProps> = ({ quizId, token }) => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={loadAssignments}
+              disabled={isLoading}
+              className="px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+              title="Refresh Roster List"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
             <button
               onClick={() => handleDownloadTemplate('csv')}
               className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-50 border border-slate-200 rounded-md hover:bg-slate-100 transition-colors flex items-center gap-1.5"
