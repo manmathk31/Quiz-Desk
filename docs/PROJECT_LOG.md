@@ -1131,3 +1131,28 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - Backend pytest suite: 173 passed in 10.33s.
    - Frontend build: `tsc -b && vite build` built in 1.27s with 0 errors.
    - Frontend lint: 0 errors across 51 files.
+
+---
+
+## 13. Role-Contextual Sign Out and Fallback Redirection Engine (2026-10-24)
+
+### Execution Summary
+1. **Diagnosis**:
+   - Unauthenticated access and sign-out actions on admin or teacher routes triggered `<Navigate to="/login" />`.
+   - `/login` previously had a hardcoded redirect to `/student/login`, causing administrators and teachers who signed out (or accessed protected routes without a session) to be unexpectedly bounced into the student portal entrance.
+2. **Intelligent Login Gateway (`frontend/src/App.tsx`)**:
+   - Replaced static `/login` redirect with `LoginGateway` component that inspects navigation origin (`state.from.pathname`).
+   - Admin routes (`/admin/*`, `/status`) route unauthenticated fallbacks directly to `/admin/login`.
+   - Faculty routes (`/teacher/*`) route unauthenticated fallbacks directly to `/teacher/login`.
+   - Student routes and general traffic route to `/student/login`.
+3. **Role-Aware Route Guards (`RequireRole.tsx`, `RequireAuth.tsx`)**:
+   - Replaced generic `/login` fallbacks with `getLoginRoute()`, immediately sending unauthenticated visitors to the portal matching the requested route.
+   - Re-wired in-guard "Sign Out" buttons to explicitly route administrators to `/admin/login` and faculty to `/teacher/login`.
+4. **Header Sign Out Context (`Header.tsx`)**:
+   - Implemented `handleSignOut` in the application navbar (desktop and mobile).
+   - Dynamically inspects current role and pathname before sign out to guarantee administrators return to `/admin/login` and faculty return to `/teacher/login`.
+5. **Verification**:
+   - Backend pytest suite: 173 passed in 10.00s.
+   - Frontend build: `tsc -b && vite build` built in 607ms with 0 errors.
+   - Frontend lint: 0 errors across 51 files.
+

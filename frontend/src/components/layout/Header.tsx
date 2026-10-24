@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, X, User as UserIcon, LogOut, LogIn } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { Logo } from '../common/Logo'
@@ -7,7 +7,21 @@ import { Logo } from '../common/Logo'
 export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
   const { session, user, role, signOut } = useAuth()
+
+  const handleSignOut = async () => {
+    const currentPath = location.pathname
+    const currentRole = role
+    await signOut()
+    if (currentRole === 'admin' || currentPath.startsWith('/admin') || currentPath === '/status') {
+      navigate('/admin/login', { replace: true })
+    } else if (currentRole === 'teacher' || currentPath.startsWith('/teacher')) {
+      navigate('/teacher/login', { replace: true })
+    } else {
+      navigate('/student/login', { replace: true })
+    }
+  }
 
   const navLinks = [
     ...(session && role === 'student'
@@ -81,8 +95,8 @@ export const Header: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => signOut()}
-                  className="flex items-center space-x-1 p-1.5 text-slate-400 hover:text-rose-300 hover:bg-slate-800 rounded transition-colors text-xs"
+                  onClick={handleSignOut}
+                  className="flex items-center space-x-1 p-1.5 text-slate-400 hover:text-rose-300 hover:bg-slate-800 rounded transition-colors text-xs cursor-pointer"
                   title="Sign Out"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -147,10 +161,10 @@ export const Header: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    signOut()
                     setMobileMenuOpen(false)
+                    handleSignOut()
                   }}
-                  className="flex items-center space-x-1 text-xs text-rose-400"
+                  className="flex items-center space-x-1 text-xs text-rose-400 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Sign Out</span>

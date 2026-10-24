@@ -1,5 +1,5 @@
 import React, { type PropsWithChildren } from 'react'
-import { Navigate, useLocation, Link, Outlet } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../types/auth'
 import { Shield, ShieldAlert, ShieldX, Loader2, RefreshCw, Home, LogOut } from 'lucide-react'
@@ -11,6 +11,25 @@ interface RequireRoleProps extends PropsWithChildren {
 export const RequireRole: React.FC<RequireRoleProps> = ({ allowedRoles, children }) => {
   const { session, user, role, loading, isConfigured, profileStatus, profileError, refreshProfile, signOut } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
+
+  // Helper to determine the role-appropriate login route
+  const getLoginRoute = () => {
+    if (
+      allowedRoles.includes('admin') ||
+      location.pathname.startsWith('/admin') ||
+      location.pathname === '/status'
+    ) {
+      return '/admin/login'
+    }
+    if (
+      allowedRoles.includes('teacher') ||
+      location.pathname.startsWith('/teacher')
+    ) {
+      return '/teacher/login'
+    }
+    return '/student/login'
+  }
 
   // 1. Initial hydration loading state - prevents flashing
   if (loading || (session && profileStatus === 'loading')) {
@@ -38,9 +57,9 @@ export const RequireRole: React.FC<RequireRoleProps> = ({ allowedRoles, children
     )
   }
 
-  // 3. Unauthenticated state - redirect to login
+  // 3. Unauthenticated state - redirect to role-specific login
   if (!session || !user) {
-    return <Navigate to="/login" state={{ from: location }} replace />
+    return <Navigate to={getLoginRoute()} state={{ from: location }} replace />
   }
 
   // 4. Role resolution pending backend implementation (DEC-015: never guess role from client metadata)
@@ -105,8 +124,12 @@ export const RequireRole: React.FC<RequireRoleProps> = ({ allowedRoles, children
           </Link>
           <button
             type="button"
-            onClick={() => signOut()}
-            className="flex items-center space-x-1.5 px-3.5 py-2 text-rose-400 hover:bg-rose-950/40 rounded-lg text-xs font-medium transition-colors ml-auto"
+            onClick={async () => {
+              const target = getLoginRoute()
+              await signOut()
+              navigate(target, { replace: true })
+            }}
+            className="flex items-center space-x-1.5 px-3.5 py-2 text-rose-400 hover:bg-rose-950/40 rounded-lg text-xs font-medium transition-colors ml-auto cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
@@ -146,8 +169,12 @@ export const RequireRole: React.FC<RequireRoleProps> = ({ allowedRoles, children
           </Link>
           <button
             type="button"
-            onClick={() => signOut()}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium transition-colors"
+            onClick={async () => {
+              const target = getLoginRoute()
+              await signOut()
+              navigate(target, { replace: true })
+            }}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>

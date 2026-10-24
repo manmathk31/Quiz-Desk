@@ -1,11 +1,22 @@
 import React, { type PropsWithChildren } from 'react'
-import { Navigate, useLocation, Outlet } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { ShieldAlert, Loader2, LogOut } from 'lucide-react'
 
 export const RequireAuth: React.FC<PropsWithChildren> = ({ children }) => {
   const { session, user, loading, isConfigured, profileStatus, profileError, signOut } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
+
+  const getLoginRoute = () => {
+    if (location.pathname.startsWith('/admin') || location.pathname === '/status') {
+      return '/admin/login'
+    }
+    if (location.pathname.startsWith('/teacher')) {
+      return '/teacher/login'
+    }
+    return '/student/login'
+  }
 
   // 1. Initial hydration loading state or in-flight profile resolution - prevents protected content flashing
   if (loading || (session && profileStatus === 'loading')) {
@@ -34,9 +45,9 @@ export const RequireAuth: React.FC<PropsWithChildren> = ({ children }) => {
     )
   }
 
-  // 3. Unauthenticated state - redirect to login, preserving intended destination
+  // 3. Unauthenticated state - redirect to role-specific login, preserving intended destination
   if (!session || !user) {
-    return <Navigate to="/login" state={{ from: location }} replace />
+    return <Navigate to={getLoginRoute()} state={{ from: location }} replace />
   }
 
   // 4. Authenticated session rejected by backend (HTTP 401 / inactive / unregistered)
@@ -57,8 +68,12 @@ export const RequireAuth: React.FC<PropsWithChildren> = ({ children }) => {
         </p>
         <button
           type="button"
-          onClick={() => signOut()}
-          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-medium transition-colors"
+          onClick={async () => {
+            const target = getLoginRoute()
+            await signOut()
+            navigate(target, { replace: true })
+          }}
+          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-medium transition-colors cursor-pointer"
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>Sign Out</span>

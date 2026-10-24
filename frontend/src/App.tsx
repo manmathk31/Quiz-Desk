@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { Shell } from './components/layout/Shell'
 import { Home } from './pages/Home'
@@ -22,6 +22,26 @@ import { TeacherForgotPassword } from './pages/auth/TeacherForgotPassword'
 import { TeacherResetPassword } from './pages/auth/TeacherResetPassword'
 import { AdminLogin } from './pages/auth/AdminLogin'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
+
+/**
+ * Intelligent login gateway:
+ * Routes unauthenticated visitors or fallback redirections to the appropriate login portal:
+ * - Admin routes (/admin/* or /status) -> /admin/login
+ * - Faculty routes (/teacher/*) -> /teacher/login
+ * - Student routes & default -> /student/login
+ */
+const LoginGateway: React.FC = () => {
+  const location = useLocation()
+  const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || ''
+
+  if (from.startsWith('/admin') || from === '/status') {
+    return <Navigate to="/admin/login" replace state={location.state} />
+  }
+  if (from.startsWith('/teacher')) {
+    return <Navigate to="/teacher/login" replace state={location.state} />
+  }
+  return <Navigate to="/student/login" replace state={location.state} />
+}
 
 /**
  * Intelligent gateway for the root URL:
@@ -68,7 +88,7 @@ export const App: React.FC = () => {
           <Routes>
             {/* Intelligent Root Gateway & Role-Segregated Entry Routes */}
             <Route path="/" element={<RootGateway />} />
-            <Route path="/login" element={<Navigate to="/student/login" replace />} />
+            <Route path="/login" element={<LoginGateway />} />
             <Route path="/student/login" element={<StudentLogin />} />
             <Route path="/teacher/login" element={<TeacherLogin />} />
             <Route path="/teacher/forgot-password" element={<TeacherForgotPassword />} />
