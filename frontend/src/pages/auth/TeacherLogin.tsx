@@ -220,7 +220,7 @@ export const TeacherLogin: React.FC = () => {
             className="inline-flex items-center space-x-1 font-semibold text-blue-600 hover:text-blue-700 transition-colors"
           >
             <GraduationCap className="w-3.5 h-3.5" />
-            <span>Student Entrance</span>
+            <span>Student Login</span>
           </Link>
         </div>
       </div>

@@ -12,8 +12,8 @@ import {
   Loader2,
   ArrowRight,
   Info,
+  GraduationCap,
 } from 'lucide-react'
-import { Logo } from '../../components/common/Logo'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -135,13 +135,12 @@ export const StudentLogin: React.FC = () => {
 
         {/* Header Block */}
         <div className="flex items-center space-x-3.5 mb-6">
-          <Logo size="lg" showSubtitle={false} />
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-600/25 shrink-0">
+            <GraduationCap className="w-6 h-6" />
+          </div>
           <div>
-            <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-[10px] font-bold text-blue-700 uppercase tracking-wider mb-0.5">
-              <span>Student Entrance</span>
-            </div>
-            <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Student Sign In</h1>
-            <p className="text-xs text-slate-500">Access your scheduled tests and assessments</p>
+            <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Student Login</h1>
+            <p className="text-xs text-slate-500 mt-0.5">Access your scheduled tests and assessments</p>
           </div>
         </div>
 

@@ -16,7 +16,8 @@ alembic==1.14.1
 psycopg[binary]==3.2.4
 
 # Authentication & Security
-pyjwt==2.10.1
+pyjwt[crypto]==2.10.1
+cryptography==50.0.2
 python-multipart==0.0.20
 
 # Document & Spreadsheet Processing

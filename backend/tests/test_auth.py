@@ -441,3 +441,27 @@ async def test_missing_jwt_secret_misconfiguration(monkeypatch, sample_student):
         )
     assert response.status_code == 500
     assert "misconfigured: SUPABASE_JWT_SECRET is missing" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_es256_jwt_token_decoding(monkeypatch):
+    """Verify that ES256 asymmetric ECDSA tokens are properly decoded."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    public_key = private_key.public_key()
+
+    monkeypatch.setattr(settings, "SUPABASE_JWT_PUBLIC_KEY", public_key)
+    monkeypatch.setattr(settings, "SUPABASE_JWT_SECRET", "dummy-secret")
+
+    test_sub = str(uuid.uuid4())
+    es_token = jwt.encode(
+        {"sub": test_sub, "email": "admin@college.edu", "exp": int(time.time()) + 3600, "aud": "authenticated"},
+        private_key,
+        algorithm="ES256",
+        headers={"kid": "test-ec-kid"},
+    )
+
+    payload = decode_supabase_jwt(es_token)
+    assert payload["sub"] == test_sub
+    assert payload["email"] == "admin@college.edu"
+

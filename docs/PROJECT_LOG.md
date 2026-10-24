@@ -1156,3 +1156,26 @@ All items listed below represent **Confirmed** requirements and decisions agreed
    - Frontend build: `tsc -b && vite build` built in 607ms with 0 errors.
    - Frontend lint: 0 errors across 51 files.
 
+---
+
+## 14. Support Supabase ES256 Asymmetric Tokens & Modernize Student Login Card (2026-10-24)
+
+### Execution Summary
+1. **Diagnosis of "The specified alg value is not allowed"**:
+   - Supabase projects generate asymmetric **ES256 (ECDSA P-256)** tokens by default, published at `/.well-known/jwks.json`.
+   - The backend was configured strictly for `["HS256"]` with `pyjwt` missing the `cryptography` dependency.
+   - When attempting to bootstrap via `POST /api/v1/admin/bootstrap`, `PyJWT` rejected the token with `InvalidAlgorithmError: The specified alg value is not allowed`.
+2. **Dual-Algorithm Verification & JWKS Client (`backend/app/core/auth.py`, `backend/requirements.txt`)**:
+   - Installed `cryptography==50.0.2` and updated `pyjwt[crypto]==2.10.1`.
+   - Updated `decode_supabase_jwt` to inspect token headers and dynamically handle both **ES256/RS256** (resolving keys via Supabase JWKS with `jwt.PyJWKClient`) and **HS256** (using `SUPABASE_JWT_SECRET`).
+   - Added automated unit test `test_es256_jwt_token_decoding` covering ECDSA asymmetric verification.
+3. **Student Login Redesign & Bullet Point Removal (`StudentLogin.tsx`)**:
+   - Eliminated the stray blue dot caused by the hidden `<Logo>` text component on white backgrounds.
+   - Replaced `<Logo>` with a dedicated 48x48 academic `GraduationCap` badge with smooth blue-indigo gradient and shadow.
+   - Removed vague "Student Entrance" badges; replaced with direct, clear **"Student Login"** title across `StudentLogin.tsx`, `AdminLogin.tsx`, and `TeacherLogin.tsx`.
+4. **Verification**:
+   - Backend pytest suite: 174 passed in 9.75s (all passing).
+   - Frontend build: `tsc -b && vite build` built in 1.80s with 0 errors.
+   - Frontend lint: 0 errors across 51 files.
+
+

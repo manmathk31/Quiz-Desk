@@ -14,6 +14,17 @@ from app.models.user import User, UserRole
 # HTTP Bearer scheme with auto_error=False to provide tailored RFC 6750 401 responses
 bearer_scheme = HTTPBearer(auto_error=False)
 
+_jwks_client: Optional[jwt.PyJWKClient] = None
+
+
+def get_jwks_client() -> Optional[jwt.PyJWKClient]:
+    """Retrieve or initialize the PyJWKClient for fetching Supabase public signing keys."""
+    global _jwks_client
+    if _jwks_client is None and settings.SUPABASE_URL:
+        jwks_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        _jwks_client = jwt.PyJWKClient(jwks_url, cache_keys=True, max_cached_keys=16)
+    return _jwks_client
+
 
 def decode_supabase_jwt(
     token: str,
@@ -24,18 +35,64 @@ def decode_supabase_jwt(
     Cryptographically verify and decode a Supabase-issued JWT.
 
     Validates:
-    - Signature integrity using HMAC-SHA256 (HS256) and the Supabase JWT secret.
+    - Signature integrity using HMAC-SHA256 (HS256) or ECDSA/RSA (ES256/RS256 via JWKS).
     - Expiration timestamp (exp).
     - Expected audience (aud, default: 'authenticated').
     - Presence of subject identifier (sub).
 
-    Rejects arbitrary algorithms and unauthorized or malformed tokens.
+    Supports both legacy symmetric HS256 tokens and modern asymmetric ES256/RS256 tokens.
     """
-    signing_key = secret or settings.SUPABASE_JWT_PUBLIC_KEY or settings.SUPABASE_JWT_SECRET
-    if not signing_key:
+    if not secret and not settings.SUPABASE_JWT_PUBLIC_KEY and not settings.SUPABASE_JWT_SECRET:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authentication service misconfigured: SUPABASE_JWT_SECRET is missing",
+        )
+
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Malformed or unreadable token header",
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+        )
+
+    token_alg = unverified_header.get("alg", "HS256")
+    allowed_algorithms = list(set([settings.SUPABASE_JWT_ALGORITHM, "HS256", "ES256", "RS256"]))
+
+    if token_alg not in allowed_algorithms:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Unsupported token algorithm: {token_alg}",
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+        )
+
+    signing_key = None
+    if token_alg in ("ES256", "RS256"):
+        # Asymmetric signature verification (EC or RSA)
+        if settings.SUPABASE_JWT_PUBLIC_KEY:
+            signing_key = settings.SUPABASE_JWT_PUBLIC_KEY
+        else:
+            client = get_jwks_client()
+            if client:
+                try:
+                    signing_key = client.get_signing_key_from_jwt(token).key
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail=f"Unable to resolve verification key from Supabase JWKS: {str(exc)}",
+                        headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+                    )
+            else:
+                signing_key = secret or settings.SUPABASE_JWT_SECRET
+    else:
+        # Symmetric signature verification (HS256)
+        signing_key = secret or settings.SUPABASE_JWT_SECRET
+
+    if not signing_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication service misconfigured: signing key is missing",
         )
 
     expected_audience = audience if audience is not None else settings.SUPABASE_JWT_AUDIENCE
@@ -51,7 +108,7 @@ def decode_supabase_jwt(
         decode_options["verify_aud"] = False
 
     kwargs = {
-        "algorithms": [settings.SUPABASE_JWT_ALGORITHM],
+        "algorithms": allowed_algorithms,
         "options": decode_options,
     }
     if expected_audience:
