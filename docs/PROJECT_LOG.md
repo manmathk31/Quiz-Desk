@@ -1108,16 +1108,26 @@ All items listed below represent **Confirmed** requirements and decisions agreed
 4. **Verification**:
    - Backend pytest suite: 173 passed in 13.19s.
    - Frontend build: `tsc -b && vite build` built in 807ms with 0 errors.
+---
 
+## 12. Fix Unprovisioned Admin Navigation & 401 Error Feedback (2026-10-24)
 
-
-
-
-
-
-
-
-
-
-
-
+### Execution Summary
+1. **Diagnosis of Screenshot (`https://quizdesk-mitaoe.pages.dev/admin/dashboard`)**:
+   - Identity `202401110045@mitaoe.ac.in` successfully authenticated via Supabase Auth, but does not yet exist in PostgreSQL `users` table.
+   - `GET /api/v1/users/me` returned `HTTP 401 Unauthorized: User not registered in the system`.
+   - `AdminLogin.tsx` previously had `handleSignIn` blindly redirecting to `/admin/dashboard` upon password submission, skipping the bootstrap screen on `/admin/login` and trapping unprovisioned admins behind the `<RequireRole allowedRoles={['admin']}>` guard.
+   - `AuthContext.tsx` had a hardcoded error message `"Session unauthorized or expired (HTTP 401). Please sign in again."` that masked the true backend reason (`User not registered in the system`).
+2. **Backend Error Parsing (`frontend/src/context/AuthContext.tsx`)**:
+   - Parses `response.json()` error detail if present (`User not registered in the system (HTTP 401)`).
+3. **Role-Aware Navigation & Bootstrap Guard (`frontend/src/pages/auth/AdminLogin.tsx`)**:
+   - Removed blind navigation to `/admin/dashboard` in `handleSignIn`.
+   - Added `useEffect` that routes to `/admin/dashboard` only when `session && user && role === 'admin'`.
+   - Unprovisioned users stay on `/admin/login` to view the bootstrap screen with token entry form.
+   - Added session utility footer with "Student Entrance" link and "Sign Out" button to allow quick switching if the wrong account was used.
+4. **Direct Route Link in Guard (`frontend/src/components/auth/RequireRole.tsx`)**:
+   - Added an **"Admin Provisioning Console"** button (`/admin/login`) when visitors on `/admin/*` have an unprovisioned role, preventing dead ends.
+5. **Verification**:
+   - Backend pytest suite: 173 passed in 10.33s.
+   - Frontend build: `tsc -b && vite build` built in 1.27s with 0 errors.
+   - Frontend lint: 0 errors across 51 files.

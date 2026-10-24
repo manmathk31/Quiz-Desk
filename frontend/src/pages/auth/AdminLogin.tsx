@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -15,11 +15,12 @@ import {
   ArrowRight,
   GraduationCap,
   BookOpen,
+  LogOut,
 } from 'lucide-react'
 import { bootstrapAdminUser } from '../../services/adminApi'
 
 export const AdminLogin: React.FC = () => {
-  const { session, user, role, signInWithEmail, isConfigured, refreshProfile } = useAuth()
+  const { session, user, role, signInWithEmail, isConfigured, refreshProfile, signOut } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -33,6 +34,13 @@ export const AdminLogin: React.FC = () => {
 
   const navigate = useNavigate()
 
+  // Auto-redirect to dashboard if authenticated and verified as admin
+  useEffect(() => {
+    if (session && user && role === 'admin') {
+      navigate('/admin/dashboard', { replace: true })
+    }
+  }, [session, user, role, navigate])
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMsg(null)
@@ -42,9 +50,10 @@ export const AdminLogin: React.FC = () => {
       const { error } = await signInWithEmail(email.trim().toLowerCase(), password)
       if (error) {
         setErrorMsg(error.message)
-      } else {
-        navigate('/admin/dashboard', { replace: true })
       }
+      // On success, do NOT immediately navigate. If user is already provisioned as admin,
+      // the useEffect above will redirect them to /admin/dashboard. If unprovisioned,
+      // they stay on this page to enter the bootstrap token.
     } catch (err: unknown) {
       setErrorMsg(
         err instanceof Error ? err.message : 'An unexpected error occurred during admin sign in.'
@@ -171,6 +180,25 @@ export const AdminLogin: React.FC = () => {
                   <span>{bootstrapping ? 'Provisioning...' : 'Provision Administrator Account'}</span>
                 </button>
               </form>
+
+              {/* Session utility footer */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                <Link
+                  to="/student/login"
+                  className="inline-flex items-center space-x-1 font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                >
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span>Student Entrance</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => signOut()}
+                  className="inline-flex items-center space-x-1 font-semibold text-rose-600 hover:text-rose-700 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

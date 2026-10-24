@@ -2,7 +2,7 @@ import React, { type PropsWithChildren } from 'react'
 import { Navigate, useLocation, Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../types/auth'
-import { ShieldAlert, ShieldX, Loader2, RefreshCw, Home, LogOut } from 'lucide-react'
+import { Shield, ShieldAlert, ShieldX, Loader2, RefreshCw, Home, LogOut } from 'lucide-react'
 
 interface RequireRoleProps extends PropsWithChildren {
   allowedRoles: UserRole[]
@@ -79,6 +79,15 @@ export const RequireRole: React.FC<RequireRoleProps> = ({ allowedRoles, children
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
+          {location.pathname.startsWith('/admin') && (
+            <Link
+              to="/admin/login"
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>Admin Provisioning Console</span>
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => refreshProfile()}

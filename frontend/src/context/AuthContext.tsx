@@ -66,12 +66,26 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
           return
         }
 
+        let detailMsg: string | null = null
+        try {
+          const errData = await response.json()
+          if (errData?.detail && typeof errData.detail === 'string') {
+            detailMsg = errData.detail
+          }
+        } catch {
+          // ignore parsing error if response has no JSON body
+        }
+
         // Token rejected, account deactivated, or unregistered user: strictly clear profile & role
         if (response.status === 401) {
           setProfile(null)
           setRole(null)
           setProfileStatus('error')
-          setProfileError('Session unauthorized or expired (HTTP 401). Please sign in again.')
+          setProfileError(
+            detailMsg
+              ? `${detailMsg} (HTTP 401)`
+              : 'User not registered in database or session expired (HTTP 401).'
+          )
           return
         }
 
